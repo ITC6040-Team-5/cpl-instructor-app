@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatSendBtn = document.getElementById('chat-send');
     const chatTranscript = document.getElementById('intake-chat');
 
-    function appendUserMessage(text) {
+    async function appendUserMessage(text) {
         if (!text.trim()) return;
 
         // Create user message HTML
@@ -75,39 +75,49 @@ document.addEventListener('DOMContentLoaded', () => {
         chatInput.value = '';
         chatTranscript.scrollTop = chatTranscript.scrollHeight;
 
-        // Simulate AI thinking and responding
-        setTimeout(() => {
+        // Add loading state
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'message assistant loading-indicator';
+        loadingDiv.innerHTML = `<div class="avatar-small">AI</div><div class="message-content"><p class="text-muted"><i class="ph ph-spinner ph-spin"></i> Processing...</p></div>`;
+        chatTranscript.appendChild(loadingDiv);
+        chatTranscript.scrollTop = chatTranscript.scrollHeight;
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text })
+            });
+            const data = await response.json();
+            
+            // Remove loading
+            chatTranscript.removeChild(loadingDiv);
+
             const aiDiv = document.createElement('div');
             aiDiv.className = 'message assistant';
             aiDiv.innerHTML = `
-                <div class="avatar-small">AI</div>
+                <div class="avatar-small bg-ai"><i class="ph-fill ph-sparkle text-white"></i></div>
                 <div class="message-content">
-                    <p>I've noted that detail. Let me update your case record.</p>
-                    <div class="action-card">
-                        <i class="ph ph-file-plus" style="color:var(--status-yellow-text)"></i>
-                        <span>Added "Budgeting Example" to Case Record</span>
-                    </div>
-                    <p>Is there any other evidence you'd like to provide for this outcome?</p>
+                    <p>${data.answer || 'Sorry, I could not process that.'}</p>
                 </div>
             `;
             chatTranscript.appendChild(aiDiv);
             chatTranscript.scrollTop = chatTranscript.scrollHeight;
 
-            // Visually toggle the missing item in record pane
-            const warningCallout = document.querySelector('.record-sidebar .callout.warning');
-            if (warningCallout) {
-                warningCallout.className = 'callout small';
-                warningCallout.style.backgroundColor = 'var(--status-green-bg)';
-                warningCallout.style.borderColor = 'var(--status-green-text)';
-                warningCallout.style.color = 'var(--status-green-text)';
-                warningCallout.innerHTML = '<i class="ph ph-check-circle"></i> Extracted budget competency.';
+            // Mocking the progress update visually as before
+            if (document.querySelector('.progress-bar-fill')) {
+                document.querySelector('.progress-bar-fill').style.width = '80%';
+                if (document.querySelector('.progress-text')) document.querySelector('.progress-text').innerText = '80% Complete';
             }
 
-            // Update progress bar
-            document.querySelector('.progress-bar-fill').style.width = '80%';
-            document.querySelector('.progress-text').innerText = '80% Complete';
-
-        }, 1500);
+        } catch (error) {
+            chatTranscript.removeChild(loadingDiv);
+            const errDiv = document.createElement('div');
+            errDiv.className = 'message assistant';
+            errDiv.innerHTML = `<div class="avatar-small">AI</div><div class="message-content"><p style="color: red;">Error connecting to backend.</p></div>`;
+            chatTranscript.appendChild(errDiv);
+            chatTranscript.scrollTop = chatTranscript.scrollHeight;
+        }
     }
 
     if (chatSendBtn && chatInput) {
@@ -271,4 +281,67 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize initial state (prevent jumpiness on first load)
     document.querySelector('.nav-item.active').click();
+
+    // 7. Evidence Upload Logic Stub
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+
+    const browseBtns = document.querySelectorAll('.dropzone .btn-secondary, .mini-dropzone a');
+    browseBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            fileInput.click();
+        });
+    });
+
+    fileInput.addEventListener('change', async (e) => {
+        if (e.target.files.length > 0) {
+            const file = e.target.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/evidence/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    // Just show a native alert for now to prove end-to-end integration works
+                    alert('Backend Upload Triggered: ' + data.filename);
+                }
+            } catch (error) {
+                console.error('Upload failed', error);
+                alert('Backend Upload Failed');
+            }
+        }
+    });
+
+    // 8. Admin Review Logic Stub
+    const approveBtn = document.querySelector('.review-topbar .btn-primary');
+    const denyBtn = document.querySelector('.review-topbar .btn-secondary.text-danger');
+    
+    async function handleReviewAction(decision) {
+        try {
+            const caseId = "CPL-8991"; // Hardcoded for prototype
+            const response = await fetch(`/api/case/${caseId}/review`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ decision })
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                alert(`Backend Review Triggered: Case ${caseId} marked as ${decision}.`);
+            }
+        } catch (error) {
+            console.error('Review action failed', error);
+            alert('Backend Review Failed');
+        }
+    }
+
+    if (approveBtn) approveBtn.addEventListener('click', () => handleReviewAction('Approve'));
+    if (denyBtn) denyBtn.addEventListener('click', () => handleReviewAction('Deny'));
 });
+
