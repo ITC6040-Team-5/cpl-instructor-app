@@ -3,7 +3,10 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from openai import AzureOpenAI
 
 # NEW: DB test imports
-import pyodbc
+try:
+    import pyodbc
+except ImportError:
+    pyodbc = None
 
 
 # Explicit template folder for Azure App Service reliability
@@ -103,6 +106,9 @@ def dbcheck():
         return jsonify({"error": "Missing SQL_CONNECTION_STRING"}), 500
 
     try:
+        if not pyodbc:
+            return jsonify({"error": "pyodbc module not installed or missing dependencies (e.g., unixodbc on Mac)"}), 500
+            
         # Keep it simple: open connection and run a tiny query
         conn = pyodbc.connect(conn_str, timeout=10)
         cursor = conn.cursor()
