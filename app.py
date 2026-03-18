@@ -168,6 +168,29 @@ def api_chat():
 
 
 # ===============================
+# Stub Endpoints for Phase 2 UI Integration
+# ===============================
+@app.post("/api/evidence/upload")
+def upload_evidence():
+    # Stub endpoint responding to the dropzone
+    from flask import request
+    if 'file' not in request.files and not request.data:
+        # Fallback if there's no multiparty file, just accept
+        return jsonify({"status": "success", "filename": "mock_upload.ext"})
+    
+    file = request.files.get('file')
+    filename = file.filename if file else "mock_upload.ext"
+    return jsonify({"status": "success", "filename": filename})
+
+@app.post("/api/case/<case_id>/review")
+def review_case(case_id):
+    # Stub endpoint for Admin approve/deny buttons
+    from flask import request
+    data = request.get_json(silent=True) or {}
+    decision = data.get("decision", "Unknown")
+    return jsonify({"status": "success", "case_id": case_id, "decision": decision})
+
+# ===============================
 # Local Dev Entry Point
 # ===============================
 if __name__ == "__main__":
