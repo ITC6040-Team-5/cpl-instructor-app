@@ -5,6 +5,13 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+    // 0. Session Initialization
+    let sessionId = localStorage.getItem('cpl_session_id');
+    if (!sessionId) {
+        sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('cpl_session_id', sessionId);
+    }
+
     // 1. Navigation Logic (SPA View Switching)
     const navItems = document.querySelectorAll('.nav-item');
     const screenViews = document.querySelectorAll('.screen-view');
@@ -22,6 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {
+            const targetId = item.getAttribute('data-target');
+            if (!targetId) {
+                // Let normal browser navigation handle links without a target screen
+                return;
+            }
+
             e.preventDefault();
 
             // Remove active from all nav items
@@ -33,7 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
             screenViews.forEach(screen => screen.classList.remove('active'));
 
             // Show target screen
-            const targetId = item.getAttribute('data-target');
             document.getElementById(targetId).classList.add('active');
 
             // Update Breadcrumb
@@ -86,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text })
+                body: JSON.stringify({ message: text, session_id: sessionId })
             });
             const data = await response.json();
             
@@ -266,6 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 profileRole.innerText = 'Reviewer';
                 const dashboardTab = document.querySelector('.nav-item[data-target="admin-dashboard-screen"]');
                 if (dashboardTab) dashboardTab.click();
+                if (typeof fetchAdminCases === 'function') fetchAdminCases();
             } else {
                 // Switch to Applicant View
                 reviewerNavWrapper.style.display = 'none';
@@ -299,8 +312,25 @@ document.addEventListener('DOMContentLoaded', () => {
     fileInput.addEventListener('change', async (e) => {
         if (e.target.files.length > 0) {
             const file = e.target.files[0];
+            // Disable dropzone while uploading
+            const dropzone = document.querySelector('.dropzone'); // Assuming a dropzone element exists
+            if (dropzone) {
+                dropzone.style.opacity = '0.5';
+                dropzone.style.pointerEvents = 'none';
+            }
+
             const formData = new FormData();
             formData.append('file', file);
+            
+            // Pass the active conversational session id to bind orphaned uploads
+            // before the LLM formally generates the Case record.
+            // Assuming 'sessionId' is available in the global scope or defined elsewhere
+            if (typeof sessionId !== 'undefined') { // Check if sessionId is defined
+                formData.append('session_id', sessionId);
+            }
+            if (window.currentCaseId) {
+                formData.append('case_id', window.currentCaseId);
+            }
 
             try {
                 const response = await fetch('/api/evidence/upload', {
@@ -319,13 +349,75 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 8. Admin Review Logic Stub
+    // 8. Admin Review Logic
     const approveBtn = document.querySelector('.review-topbar .btn-primary');
     const denyBtn = document.querySelector('.review-topbar .btn-secondary.text-danger');
     
+    async function fetchAdminCases() {
+        const tbody = document.querySelector('#admin-dashboard-screen .data-table tbody');
+        if (!tbody) return;
+        
+        try {
+            const response = await fetch('/api/admin/cases');
+            const data = await response.json();
+            
+            if (data.cases) {
+                tbody.innerHTML = '';
+                data.cases.forEach(c => {
+                    const badgeClass = c.status === 'Approved' ? 'green' : (c.status === 'Denied' ? 'red' : 'yellow');
+                    
+                    const tr = document.createElement('tr');
+                    tr.className = 'clickable-row';
+                    tr.addEventListener('click', async () => {
+                        window.currentReviewCaseId = c.case_id;
+                        document.querySelector('[data-target="admin-review-screen"]').click();
+                        
+                        try {
+                            const detailRes = await fetch(`/api/case/${c.case_id}`);
+                            const detailData = await detailRes.json();
+                            if (!detailData.error) {
+                                const nameHeader = document.querySelector('#admin-review-screen h2.mb-0');
+                                const subhead = document.querySelector('#admin-review-screen .text-muted.mb-0');
+                                if (nameHeader) nameHeader.innerText = detailData.applicant;
+                                if (subhead) subhead.innerText = `${detailData.case_id} • ${detailData.target_course}`;
+                            }
+                        } catch(e) {
+                            console.error("Could not fetch case details", e);
+                        }
+                    });
+                    
+                    tr.innerHTML = `
+                        <td class="font-mono text-sm">${c.case_id}</td>
+                        <td>
+                            <div class="flex-align-center gap-2">
+                                <div class="avatar-small img">${c.applicant.substring(0,2).toUpperCase()}</div>
+                                <strong>${c.applicant}</strong>
+                            </div>
+                        </td>
+                        <td>${c.target_course}</td>
+                        <td><span class="badge ${badgeClass}">${c.status}</span></td>
+                        <td>
+                            <div class="flex-align-center gap-2 text-sm">
+                                <div class="progress-bar-bg small">
+                                    <div class="progress-bar-fill green" style="width: ${c.confidence_score || 0}%;"></div>
+                                </div>
+                                ${c.confidence_score || 0}%
+                            </div>
+                        </td>
+                        <td>${c.assignee}</td>
+                        <td><button class="btn-icon"><i class="ph ph-caret-right"></i></button></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        } catch (e) {
+            console.error("Failed to fetch cases", e);
+        }
+    }
+
     async function handleReviewAction(decision) {
         try {
-            const caseId = "CPL-8991"; // Hardcoded for prototype
+            const caseId = window.currentReviewCaseId || "CPL-8991"; // Fallback to prototype hardcode
             const response = await fetch(`/api/case/${caseId}/review`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -334,6 +426,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             if (data.status === 'success') {
                 alert(`Backend Review Triggered: Case ${caseId} marked as ${decision}.`);
+                fetchAdminCases();
+                document.querySelector('.nav-item[data-target="admin-dashboard-screen"]').click();
             }
         } catch (error) {
             console.error('Review action failed', error);
