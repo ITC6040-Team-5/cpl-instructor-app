@@ -17,6 +17,11 @@ init_db()
 # Register all application routes (pages, api, system)
 register_routes(app)
 
+# Seed demo data for MVP verification (no-op if data already exists)
+from routes.api import seed_demo_data
+with app.app_context():
+    seed_demo_data()
+
 # ===============================
 # Local Dev Entry Point
 # ===============================

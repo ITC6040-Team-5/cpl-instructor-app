@@ -10,10 +10,10 @@ def static_files(filename):
     return send_from_directory(static_dir, filename)
 
 @pages_bp.get("/")
+@pages_bp.get("/chat")
+@pages_bp.get("/admin")
+@pages_bp.get("/admin/review")
+@pages_bp.get("/admin/review/<path:rest>")
+@pages_bp.get("/cases")
 def home():
     return render_template("index.html")
-
-@pages_bp.get("/chat")
-def chat_page():
-    # Retaining legacy chat experience route for system diagnostic links
-    return render_template("chat.html")

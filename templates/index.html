@@ -66,7 +66,7 @@
                             </a>
                         </li>
                         <li>
-                            <a href="#" class="nav-item" data-target="status-screen">
+                            <a href="#" class="nav-item" data-target="case-history-screen">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <circle cx="12" cy="12" r="10"></circle>
@@ -129,21 +129,21 @@
                     <div class="nav-section-title sidebar-text text-muted">System Links</div>
                     <ul class="nav-list">
                         <li>
-                            <a href="/chat" class="nav-item">
-                                <i class="ph ph-chat-teardrop text-muted"></i>
-                                <span class="sidebar-text text-muted">Legacy Chat API</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="/admin" class="nav-item">
+                            <a href="/system/config" class="nav-item" target="_blank">
                                 <i class="ph ph-wrench text-muted"></i>
                                 <span class="sidebar-text text-muted">Config Status</span>
                             </a>
                         </li>
                         <li>
-                            <a href="/health" class="nav-item">
+                            <a href="/health" class="nav-item" target="_blank">
                                 <i class="ph ph-heartbeat text-muted"></i>
                                 <span class="sidebar-text text-muted">Health Check</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="/dbcheck" class="nav-item" target="_blank">
+                                <i class="ph ph-database text-muted"></i>
+                                <span class="sidebar-text text-muted">DB Check</span>
                             </a>
                         </li>
                     </ul>
@@ -246,74 +246,7 @@
                             </div>
 
                             <div class="chat-transcript" id="intake-chat">
-                                <!-- Authentication Exchange -->
-                                <div class="message assistant">
-                                    <div class="chat-avatar bg-ai"><i class="ph-fill ph-sparkle"></i></div>
-                                    <div class="message-content">
-                                        <p>Welcome! Before we begin, I'll need to verify your identity. Could you share
-                                            your <strong>institutional email address</strong> or <strong>student
-                                                ID</strong>?</p>
-                                    </div>
-                                </div>
-
-                                <div class="message user">
-                                    <div class="chat-avatar bg-user"><i class="ph-fill ph-user"></i></div>
-                                    <div class="message-content">
-                                        <p>Sure — my email is jane.student@university.edu</p>
-                                    </div>
-                                </div>
-
-                                <div class="message assistant">
-                                    <div class="chat-avatar bg-ai"><i class="ph-fill ph-sparkle"></i></div>
-                                    <div class="message-content">
-                                        <p>Thanks, Jane! I've verified your account and pulled up your learning records.
-                                        </p>
-                                        <div class="action-card">
-                                            <i class="ph ph-shield-check" style="color: var(--status-green-text)"></i>
-                                            <span>Identity verified — session linked to Jane Student</span>
-                                        </div>
-                                        <p>Let's get started with your evaluation.</p>
-                                    </div>
-                                </div>
-
-                                <!-- Existing Messages -->
-                                <div class="message assistant">
-                                    <div class="chat-avatar bg-ai"><i class="ph-fill ph-sparkle"></i></div>
-                                    <div class="message-content">
-                                        <p>Hi Jane. I'm here to help you build your portfolio for <strong>CS400:
-                                                Software Engineering Management</strong>. Based on your profile, I see
-                                            you've spent 4 years as a Technical Lead at TechCorp.</p>
-                                        <p>To start mapping your experience to the course outcomes, could you tell me
-                                            about a time you had to manage an underperforming team member or resolve a
-                                            major conflict?</p>
-                                    </div>
-                                </div>
-
-                                <div class="message user">
-                                    <div class="chat-avatar bg-user"><i class="ph-fill ph-user"></i></div>
-                                    <div class="message-content">
-                                        <p>Sure. Last year we had a junior developer who was struggling to meet sprint
-                                            deadlines. I realized they were blocked on CI/CD pipeline issues rather than
-                                            coding capability. I spent a week pair programming with them to teach them
-                                            our deployment tools, and eventually put them in charge of a small
-                                            deployment task to build their confidence.</p>
-                                    </div>
-                                </div>
-
-                                <div class="message assistant">
-                                    <div class="chat-avatar bg-ai"><i class="ph-fill ph-sparkle"></i></div>
-                                    <div class="message-content">
-                                        <p>Excellent example. That clearly demonstrates <em>Outcome 2: Mentorship and
-                                                Conflict Resolution</em>. Let's capture that.</p>
-                                        <div class="action-card">
-                                            <i class="ph ph-file-plus"></i>
-                                            <span>Added "Mentorship Example" to Case Record</span>
-                                        </div>
-                                        <p>For evidence, do you have any performance review templates you used, or
-                                            emails summarizing the pair programming plan? (Redact any personal
-                                            information naturally).</p>
-                                    </div>
-                                </div>
+                                <!-- Dynamic: messages rendered by app.js -->
                             </div>
 
                             <!-- Floating Input Composer -->
@@ -352,37 +285,22 @@
 
                             <!-- Tab: Case Record -->
                             <div class="record-tab-content active" id="case-record-tab">
-                                <div class="record-content">
+                                <div class="record-content" id="intake-case-record">
                                     <div class="field-group">
                                         <label>Target Course</label>
-                                        <div class="field-value">CS400: Software Eng Management</div>
+                                        <div class="field-value" id="intake-target-course">—</div>
                                     </div>
-
                                     <div class="field-group">
-                                        <label>Claimed Competencies</label>
-                                        <ul class="tag-list">
-                                            <li class="tag green"><i class="ph ph-check"></i> Agile Methodologies</li>
-                                            <li class="tag green"><i class="ph ph-check"></i> Mentorship</li>
-                                            <li class="tag yellow"><i class="ph ph-circle-dashed"></i> Budget Tracking
-                                            </li>
-                                        </ul>
+                                        <label>Case ID</label>
+                                        <div class="field-value font-mono" id="intake-case-id">—</div>
                                     </div>
-
                                     <div class="field-group">
-                                        <label>Summary of Experience</label>
-                                        <div class="field-box">
-                                            4+ years as Tech Lead at TechCorp. Managed team of 6 engineers. Led
-                                            transition
-                                            from waterfall to agile methodologies resulting in 30% faster delivery.
-                                        </div>
+                                        <label>Status</label>
+                                        <div class="field-value" id="intake-case-status">No active case</div>
                                     </div>
-
                                     <div class="field-group">
-                                        <label>Missing Items / Next Steps</label>
-                                        <div class="callout warning small">
-                                            <i class="ph ph-warning-circle"></i> Evidence needed for "Budget Tracking"
-                                            competency.
-                                        </div>
+                                        <label>Summary</label>
+                                        <div class="field-box" id="intake-case-summary">Start a conversation to begin building your case.</div>
                                     </div>
                                 </div>
                             </div>
@@ -394,35 +312,10 @@
                                         <i class="ph ph-cloud-arrow-up"></i>
                                         <span>Drop files here or <a href="#">browse</a></span>
                                     </div>
-
                                     <div class="field-group mt-3">
-                                        <label>Attached Files (3)</label>
-                                        <div class="compact-file-list">
-                                            <div class="compact-file-item">
-                                                <i class="ph-fill ph-file-pdf" style="color: #EF4444;"></i>
-                                                <div class="compact-file-info">
-                                                    <span
-                                                        class="compact-file-name">TechCorp_Performance_Reviews.pdf</span>
-                                                    <span class="compact-file-meta">1.2 MB · Mentorship</span>
-                                                </div>
-                                                <span class="badge green" style="font-size: 0.6rem;">Mapped</span>
-                                            </div>
-                                            <div class="compact-file-item">
-                                                <i class="ph-fill ph-file-text" style="color: #3B82F6;"></i>
-                                                <div class="compact-file-info">
-                                                    <span class="compact-file-name">Agile_Transition_Charter.docx</span>
-                                                    <span class="compact-file-meta">450 KB · Agile Methods</span>
-                                                </div>
-                                                <span class="badge green" style="font-size: 0.6rem;">Mapped</span>
-                                            </div>
-                                            <div class="compact-file-item">
-                                                <i class="ph-fill ph-image" style="color: #F59E0B;"></i>
-                                                <div class="compact-file-info">
-                                                    <span class="compact-file-name">Budget_Spreadsheet.png</span>
-                                                    <span class="compact-file-meta">800 KB · Unlinked</span>
-                                                </div>
-                                                <span class="badge yellow" style="font-size: 0.6rem;">Review</span>
-                                            </div>
+                                        <label>Attached Files</label>
+                                        <div class="compact-file-list" id="intake-evidence-list">
+                                            <p class="text-sm text-muted">No files uploaded yet.</p>
                                         </div>
                                     </div>
                                 </div>
@@ -502,7 +395,7 @@
                 </section>
 
                 <!-- 4. Case History Screen -->
-                <section id="status-screen" class="screen-view">
+                <section id="case-history-screen" class="screen-view">
                     <div class="content-header flex-between">
                         <div>
                             <h2>Case History</h2>
@@ -512,65 +405,11 @@
 
                     <!-- Case List View -->
                     <div id="case-list-view">
-                        <div class="case-list">
-                            <div class="case-list-item active-case" data-case="case-detail-1">
-                                <div class="case-list-left">
-                                    <div class="case-id font-mono">CPL-8992</div>
-                                    <div class="case-info">
-                                        <strong>CS400: Software Eng Management</strong>
-                                        <span class="text-sm text-muted">Started March 1, 2026</span>
-                                    </div>
-                                </div>
-                                <div class="case-list-right">
-                                    <span class="badge yellow">In Progress</span>
-                                    <div class="flex-align-center gap-2 text-sm">
-                                        <div class="progress-bar-bg small" style="width: 80px;">
-                                            <div class="progress-bar-fill" style="width: 65%;"></div>
-                                        </div>
-                                        65%
-                                    </div>
-                                    <i class="ph ph-caret-right text-muted"></i>
-                                </div>
-                            </div>
-
-                            <div class="case-list-item" data-case="case-detail-2">
-                                <div class="case-list-left">
-                                    <div class="case-id font-mono">CPL-8840</div>
-                                    <div class="case-info">
-                                        <strong>MGT201: Intro to Management</strong>
-                                        <span class="text-sm text-muted">Completed Feb 10, 2026</span>
-                                    </div>
-                                </div>
-                                <div class="case-list-right">
-                                    <span class="badge green">Approved</span>
-                                    <div class="flex-align-center gap-2 text-sm">
-                                        <div class="progress-bar-bg small" style="width: 80px;">
-                                            <div class="progress-bar-fill green" style="width: 100%;"></div>
-                                        </div>
-                                        100%
-                                    </div>
-                                    <i class="ph ph-caret-right text-muted"></i>
-                                </div>
-                            </div>
-
-                            <div class="case-list-item" data-case="case-detail-3">
-                                <div class="case-list-left">
-                                    <div class="case-id font-mono">CPL-8790</div>
-                                    <div class="case-info">
-                                        <strong>ENG101: Written Communication</strong>
-                                        <span class="text-sm text-muted">Submitted Jan 15, 2026</span>
-                                    </div>
-                                </div>
-                                <div class="case-list-right">
-                                    <span class="badge blue">Under Review</span>
-                                    <div class="flex-align-center gap-2 text-sm">
-                                        <div class="progress-bar-bg small" style="width: 80px;">
-                                            <div class="progress-bar-fill" style="width: 100%;"></div>
-                                        </div>
-                                        100%
-                                    </div>
-                                    <i class="ph ph-caret-right text-muted"></i>
-                                </div>
+                        <div class="case-list" id="case-list-container">
+                            <!-- Dynamic: rendered by app.js from /api/cases -->
+                            <div class="text-center text-muted p-4" id="case-list-empty">
+                                <i class="ph ph-folder-open" style="font-size: 2rem;"></i>
+                                <p class="mt-2">No cases yet. Start a conversation to create your first case.</p>
                             </div>
                         </div>
                     </div>
@@ -686,72 +525,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr class="clickable-row"
-                                    onclick="document.querySelector('[data-target=\'admin-review-screen\']').click()">
-                                    <td class="font-mono text-sm">CPL-8991</td>
-                                    <td>
-                                        <div class="flex-align-center gap-2">
-                                            <div class="avatar-small img">AD</div>
-                                            <strong>Alex Doe</strong>
-                                        </div>
-                                    </td>
-                                    <td>MGT301: Principles of Management</td>
-                                    <td><span class="badge yellow">Needs Review</span></td>
-                                    <td>
-                                        <div class="flex-align-center gap-2 text-sm">
-                                            <div class="progress-bar-bg small">
-                                                <div class="progress-bar-fill green" style="width: 85%;"></div>
-                                            </div>
-                                            85%
-                                        </div>
-                                    </td>
-                                    <td>Unassigned</td>
-                                    <td><button class="btn-icon"><i class="ph ph-caret-right"></i></button></td>
-                                </tr>
-                                <tr class="clickable-row">
-                                    <td class="font-mono text-sm">CPL-8985</td>
-                                    <td>
-                                        <div class="flex-align-center gap-2">
-                                            <div class="avatar-small img">MJ</div>
-                                            <strong>Maria Jenkins</strong>
-                                        </div>
-                                    </td>
-                                    <td>IT200: Intro to Networking</td>
-                                    <td><span class="badge yellow">Needs Review</span></td>
-                                    <td>
-                                        <div class="flex-align-center gap-2 text-sm">
-                                            <div class="progress-bar-bg small">
-                                                <div class="progress-bar-fill yellow" style="width: 60%;"></div>
-                                            </div>
-                                            60% (Gap: Certs)
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="avatar-small">You</div>
-                                    </td>
-                                    <td><button class="btn-icon"><i class="ph ph-caret-right"></i></button></td>
-                                </tr>
-                                <tr class="clickable-row">
-                                    <td class="font-mono text-sm">CPL-8950</td>
-                                    <td>
-                                        <div class="flex-align-center gap-2">
-                                            <div class="avatar-small img">TS</div>
-                                            <strong>Tom Smith</strong>
-                                        </div>
-                                    </td>
-                                    <td>ENG101: Composition</td>
-                                    <td><span class="badge blue">SME Review</span></td>
-                                    <td>
-                                        <div class="flex-align-center gap-2 text-sm">
-                                            <div class="progress-bar-bg small">
-                                                <div class="progress-bar-fill green" style="width: 95%;"></div>
-                                            </div>
-                                            95%
-                                        </div>
-                                    </td>
-                                    <td>Prof. Higgins</td>
-                                    <td><button class="btn-icon"><i class="ph ph-caret-right"></i></button></td>
-                                </tr>
+                                <!-- Dynamic: rendered by app.js from /api/admin/cases -->
                             </tbody>
                         </table>
                     </div>
@@ -761,12 +535,10 @@
                 <section id="admin-review-screen" class="screen-view">
                     <div class="review-topbar flex-between mb-4">
                         <div class="review-title flex-align-center gap-3">
-                            <button class="btn-icon"
-                                onclick="document.querySelector('[data-target=\'admin-dashboard-screen\']').click()"><i
-                                    class="ph ph-arrow-left"></i></button>
+                            <button class="btn-icon" id="review-back-btn"><i class="ph ph-arrow-left"></i></button>
                             <div>
-                                <h2 class="mb-0">Alex Doe</h2>
-                                <p class="text-sm text-muted font-mono mb-0">CPL-8991 • MGT301: Principles of Mgmt</p>
+                                <h2 class="mb-0" id="review-applicant-name">—</h2>
+                                <p class="text-sm text-muted font-mono mb-0" id="review-case-subhead">—</p>
                             </div>
                         </div>
                         <div class="actions-row">
@@ -783,43 +555,25 @@
                                 <h3 class="mb-0">Case Record</h3>
                                 <span class="badge green">AI Generated</span>
                             </div>
-                            <div class="review-record-content p-4">
+                            <div class="review-record-content p-4" id="review-case-record-body">
                                 <div class="field-item">
-                                    <label>Applicant Background</label>
-                                    <p>5 years as Assistant Manager at RetailCo. Managed staff of 15, handled
-                                        scheduling, inventory, and conflict resolution.</p>
+                                    <label>Summary</label>
+                                    <p id="review-case-summary" class="text-muted">Select a case to view details.</p>
                                 </div>
                                 <hr class="subtle">
                                 <div class="field-item">
-                                    <label>Rubric Mapping</label>
-
-                                    <div class="mapping-item success">
-                                        <div class="mapping-header flex-between mb-1">
-                                            <strong>1. Planning & Organizing</strong>
-                                            <i class="ph-fill ph-check-circle text-green"></i>
-                                        </div>
-                                        <p class="text-sm">Strong evidence in scheduling and inventory management
-                                            tracking.</p>
-                                        <a href="#" class="evidence-link"><i class="ph ph-link"></i>
-                                            Inv_Tracking_Template.xlsx</a>
-                                    </div>
-
-                                    <div class="mapping-item success mt-3">
-                                        <div class="mapping-header flex-between mb-1">
-                                            <strong>2. Leadership & Directing</strong>
-                                            <i class="ph-fill ph-check-circle text-green"></i>
-                                        </div>
-                                        <p class="text-sm">Transcript details conflict resolution scenario with staff.
-                                        </p>
-                                    </div>
-
-                                    <div class="mapping-item warning mt-3">
-                                        <div class="mapping-header flex-between mb-1">
-                                            <strong>3. Controlling / Metrics</strong>
-                                            <i class="ph-fill ph-warning-circle text-yellow"></i>
-                                        </div>
-                                        <p class="text-sm">Claimed experience, but missing concrete KPI reports.</p>
-                                    </div>
+                                    <label>Target Course</label>
+                                    <p id="review-target-course">—</p>
+                                </div>
+                                <hr class="subtle">
+                                <div class="field-item">
+                                    <label>AI Confidence</label>
+                                    <p id="review-confidence">—</p>
+                                </div>
+                                <hr class="subtle">
+                                <div class="field-item">
+                                    <label>Status</label>
+                                    <p id="review-case-status">—</p>
                                 </div>
                             </div>
                         </div>
@@ -830,34 +584,9 @@
                                 <h3 class="mb-0">Intake Transcript</h3>
                                 <span class="text-sm text-muted">Read-only audit log</span>
                             </div>
-                            <div class="transcript-content chat-transcript compact">
-                                <div class="message assistant">
-                                    <div class="avatar-small">AI</div>
-                                    <div class="message-content">
-                                        <p>Could you describe your responsibilities regarding team leadership?</p>
-                                    </div>
-                                </div>
-                                <div class="message user">
-                                    <div class="avatar-small img">AD</div>
-                                    <div class="message-content">
-                                        <p>Yes, I settled disputes between shift workers and trained all new hires on
-                                            the POS system.</p>
-                                        <div class="highlight-annotation" title="Mapped to: Leadership & Directing">
-                                            Highlight: Leadership</div>
-                                    </div>
-                                </div>
-                                <div class="message assistant">
-                                    <div class="avatar-small">AI</div>
-                                    <div class="message-content">
-                                        <p>Great. Do you have any training materials you authored?</p>
-                                    </div>
-                                </div>
-                                <div class="message user">
-                                    <div class="avatar-small img">AD</div>
-                                    <div class="message-content">
-                                        <p>Attached the POS_Training_Guide.pdf.</p>
-                                    </div>
-                                </div>
+                            <div class="transcript-content chat-transcript compact" id="review-transcript-body">
+                                <!-- Dynamic: populated from /api/case/<id>/messages -->
+                                <p class="text-muted p-4">Select a case to view the conversation transcript.</p>
                             </div>
                         </div>
 
@@ -867,14 +596,13 @@
                                 <h3 class="mb-0">Evidence & Review</h3>
                             </div>
                             <div class="evidence-content p-4 h-full">
-                                <h4>Files (2)</h4>
-                                <div class="mini-file-list mb-4">
-                                    <div class="file-item"><i class="ph-fill ph-file-pdf"></i> POS_Training.pdf</div>
-                                    <div class="file-item"><i class="ph-fill ph-file-xls"></i> Inv_Tracking.xlsx</div>
+                                <h4>Files</h4>
+                                <div class="mini-file-list mb-4" id="review-evidence-list">
+                                    <p class="text-muted text-sm">No evidence files attached.</p>
                                 </div>
 
                                 <h4>Reviewer Notes</h4>
-                                <textarea class="w-full mt-2" rows="5"
+                                <textarea class="w-full mt-2" rows="5" id="review-notes-input"
                                     placeholder="Add private notes or justification here..."></textarea>
 
                                 <div class="reviewer-actions mt-3">
