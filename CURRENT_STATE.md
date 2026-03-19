@@ -1,39 +1,61 @@
 # NUPathway System State (CURRENT_STATE.md)
 
-This document is the primary, single source of truth for the NUPathway system architecture, capabilities, and technical constraints. It acts as an evolving system memory.
+This document is the primary, single source of truth for the NUPathway system architecture, capabilities, and technical constraints.
 
 ---
 
 ## 1. Current Architecture
-The application is a Vanilla JS / HTML frontend powered by a Flask backend, explicitly designed to run on Azure App Service connecting to Azure SQL and Azure OpenAI.
 
-- **Entrypoint (`app.py`)**: Responsible ONLY for creating the Flask `app`, initializing the database via `db.py`, and registering the modular blueprint routes. It preserves the raw Azure start-up assumptions.
-- **Route Blueprints (`routes/`)**: 
-  - `pages.py`: Serves the primary SPA (`index.html`), the legacy shell (`chat.html`), and all static JS/CSS assets.
-  - `system.py`: Contains technical diagnostic/operational endpoints like `/health`, `/versions`, `/admin` (config view), and `/dbcheck`.
-  - `api.py`: Houses heavy business logic for chat orchestration, dynamic cases queue, case decision logic, and evidence uploads.
-- **Database Layer (`db.py`)**: Uses `pyodbc` to bind to Azure SQL via the `SQL_CONNECTION_STRING` environment variable. It safely initializes the Schema (Tables: `Sessions`, `Cases`, `Messages`, `Evidence`) automatically if the database exists.
+Flask SPA with modular blueprints, Azure SQL persistence, and Azure OpenAI conversational AI.
+
+- **Entrypoint (`app.py`)**: Creates Flask app, initializes DB schema, registers blueprints, seeds demo data.
+- **Route Blueprints (`routes/`)**:
+  - `pages.py`: Serves the SPA (`index.html`) for all client routes: `/`, `/chat`, `/admin`, `/admin/review`, `/cases`.
+  - `system.py`: Diagnostic endpoints: `/system/config`, `/health`, `/versions`, `/dbcheck`.
+  - `api.py`: All business logic — chat orchestration, case lifecycle, admin queue, evidence upload.
+- **Database Layer (`db.py`)**: Auto-initializes schema via `pyodbc` + `SQL_CONNECTION_STRING`. Tables: `Sessions`, `Cases`, `Messages`, `Evidence`.
+- **Services Layer**:
+  - `auth_service.py`: Stubbed user identity (extension point for Entra ID/SSO).
+  - `rag_service.py`: Stubbed RAG pipeline (extension point for vector search).
+- **Frontend**: Vanilla JS SPA (`app.js`) with History API router, dynamic API-backed rendering.
 
 ---
 
 ## 2. Core Capabilities Implemented
-- **Conversational Flow**: Chat history is tracked sequentially per `session_id` to build contextual prompts for Azure OpenAI.
-- **Case Creation**: Uses LLM Tool/Function-calling (`submit_cpl_case`). When a student indicates they are ready, the AI invokes the function behind the scenes to formally deposit a structured `Case` into the SQL database.
-- **Reviewer System**: The Admin portal dynamically calls `/api/admin/cases` and `/api/case/<id>` to display the cases queue and populate detailed review panes. Reviews ("Approve" / "Deny") trigger a live SQL `UPDATE`.
-- **Uploads**: `/api/evidence/upload` sanitizes filenames and validates file type/size (< 10MB) before securely writing them to the server disk and logging the path to the database.
+
+### Applicant Journey
+- **Conversational Intake (Echo)**: AI-guided 6-step pathway: Greeting → Prior Learning Capture → Course Matching → Evidence Collection → Review → Submission. System prompt enforces advisor-style behavior.
+- **Auto-Draft Case**: On first message, a Draft case is automatically created with a human-readable ID (`CPL-XXXX`). Case exists from the moment conversation begins.
+- **Case Lifecycle**: `Draft → Submitted → Under Review → Info Requested → Approved → Denied`. Status transitions driven by LLM tool calls and admin actions.
+- **Evidence Upload**: Files validated (type/size), saved to disk, linked to session/case. Upload UI in intake sidebar updates live.
+- **Case History**: Applicant can view all their cases via `/api/cases`, dynamically rendered with real status, confidence scores, and creation dates.
+- **Deep-Linking**: Direct navigation to `/chat`, `/cases`, `/admin` works correctly.
+
+### Reviewer Journey
+- **Admin Dashboard**: Dynamic case queue fetched from `/api/admin/cases`. Filterable table with case ID, applicant, course, status, confidence.
+- **Case Review Detail**: Three-pane layout populated from API — Case Record (summary, course, confidence, status), Transcript (full conversation history), Evidence (attached files). All dynamically loaded when clicking a case.
+- **Decision Capture**: Approve/Deny actions update case status in DB via `/api/case/<id>/review`.
+
+### System
+- **Seed Data**: 3 realistic demo cases with full conversation histories auto-inserted on first boot.
+- **Mock Mode**: When Azure keys are unavailable, chat returns mock responses and cases use in-memory storage.
 
 ---
 
 ## 3. Key Technical Decisions
-- **DB Fallback Strategy**: To ensure the application does not crash in local development environments where SQL Drivers (`pyodbc`) or credentials are missing, the system gracefully falls back to using in-memory mock objects (like the `mock_sessions` dict) and static placeholder data arrays.
-- **File Storage Approach**: Currently, evidence uploads are streamed directly to the local `/uploads/` directory hosted inside the App Service container, rather than calling an external File API.
-- **Route Structure Decisions**: We aggressively decoupled monolithic routing in `app.py` into distinct blueprints to preserve long-term maintainability without compromising the startup script bindings.
+
+- **"Conversation is the Interface"**: Following the Product Plan, cases are created as Drafts on first message. No separate "Create Case" step.
+- **History API Router**: SPA navigation via `window.history.pushState` with deep-link support on page load.
+- **Route Separation**: `/system/config` for diagnostics, `/admin` for the Reviewer Portal. No collision.
+- **Progressive Case Building**: The LLM tool call `submit_cpl_case` transitions Draft → Submitted with structured data (target course, confidence score, summary).
+- **In-Memory Fallback**: All DB operations gracefully fall back to in-memory dicts when `pyodbc` or `SQL_CONNECTION_STRING` is unavailable.
 
 ---
 
 ## 4. Known Constraints
-- **Azure Entrypoint Must Not Break**: The deployment pipeline and Gunicorn invoke the `app` instance from `app.py`. The fundamental top-level shape of the `Flask` initialization must be maintained.
-- **Environment Variable Dependencies**: The system absolutely requires the following mapped variables inside Azure Configuration to run securely:
+
+- **Azure Entrypoint**: `app.py` must remain the entry point. `startup.sh` must not be modified.
+- **Environment Variables** (names are deployment contracts):
   - `SQL_CONNECTION_STRING`
   - `AZURE_OPENAI_ENDPOINT`
   - `AZURE_OPENAI_API_KEY`
@@ -42,24 +64,23 @@ The application is a Vanilla JS / HTML frontend powered by a Flask backend, expl
 
 ---
 
-## 5. Architectural Extension Points (Auth & RAG)
-To ensure the MVP gracefully scales without premature over-engineering, we have introduced explicit abstractions:
-- **Authentication (`services/auth_service.py`)**: A dedicated service layer now intercepts requests to inject a `user_id`. Currently, it uses a mock `X-Mock-User-Id` header (or a default fallback) but is perfectly positioned to decode JWTs from Entra ID/SAML later.
-- **Knowledge Base (`services/rag_service.py`)**: An isolated service layer that intercepts the LLM prompt. The `knowledge/` directory has been scaffolded to house `catalogs/`, `policies/`, and `examples/`. The service currently returns a generic prompt grounding rule, but provides the exact insertion point for future FAISS/Chroma vector retrieval logic.
-- **Relational Integrity (`db.py`)**: `user_id` has been injected deeply into the `Cases`, `Sessions`, and `Evidence` tables. When a student uploads evidence during an active chat, the file is bound to their `session_id`. When the AI formally generates the `Case` record, the system automatically loops back and permanently binds all session evidence to the new `case_id`, preventing orphaned files.
+## 5. Known Limitations / Future Work
+
+| Item | Status | Notes |
+|------|--------|-------|
+| **Authentication** | Stubbed | `auth_service.py` returns mock user. Needs Entra ID/SSO integration. |
+| **RAG / Knowledge Base** | Scaffolded | `rag_service.py` + `knowledge/` directory ready. Needs vector store + document ingestion. |
+| **Blob Storage** | Not started | Files saved to local `/uploads/`. Must migrate to Azure Blob Storage for multi-instance scaling. |
+| **Notifications** | Not started | Email on status change not implemented. |
+| **Re-submission** | Not started | Case history linkage for resubmitted cases. |
+| **Audit Trail** | Not started | Immutable action log table. |
+| **Course Matching** | Mocked | Echo suggests courses conversationally but no real catalog search. |
 
 ---
 
-## 6. Known Limitations / Future Work
-- **Blob Storage Migration**: Because evidence is saved directly to local container storage (`/uploads/`), if Azure App Service is fundamentally scaled out horizontally to multiple instances, files will split arbitrarily. Migrating file storage to a dedicated Azure Blob Storage container is necessary for multi-instance load balancing.
-- **True Auth Enforcement**: The `auth_service.py` needs to be wired to a real Identity Provider. The UI will need to swap the role-switcher for a true login redirect.
-- **Data Ingestion Pipeline**: Scripts must be written to actively chunk and vectorize University PDFs into the `knowledge/` directory to make the RAG abstraction functional.
+## 6. Change Log
 
----
-
-## 7. Change Log
-- **2026-03-19:** 
-  - Restructured architecture from monolithic `app.py` into Blueprint modules (`routes/*`).
-  - Integrated full end-to-end API logic connecting Chat persistence, AI Cases extraction tool-calling, Admin Reviewer dashboard syncing, and enforced Evidence upload limits to a `db.py` Azure SQL schema.
-  - Archived outdated prototype documentation into `/archive/`.
-  - Introduced structural scaffolding for Future Auth (`auth_service.py`) and RAG (`rag_service.py`, `knowledge/`), and strictly bound `user_id` and `session_id` to orphaned upload elements to solidify the relational schema.
+| Date | Change |
+|------|--------|
+| **2026-03-19 (PM)** | **Product-grounded MVP overhaul.** Stripped all prototype hardcoded HTML (~250 lines). Rewrote `api.py` with auto-Draft case creation, 6-step Echo system prompt, `/api/cases` applicant endpoint, seed data. Rewrote `app.js` with deep-linking, dynamic rendering for Case History, Admin Dashboard, and Admin Review panes. Fixed route collision (`/admin` → `/system/config`), DOM ID mismatch, broken deep-linking. |
+| **2026-03-19 (AM)** | Blueprint modularization, History API router, chat persistence, evidence upload, admin review API wiring. Extension points for auth and RAG. |

@@ -8,9 +8,9 @@ except ImportError:
 
 system_bp = Blueprint('system', __name__)
 
-@system_bp.get("/admin")
+@system_bp.get("/system/config")
 def admin_page():
-    # Diagnostic config status page (not the product's Reviewer Portal)
+    # Diagnostic config status page — moved from /admin to avoid collision with SPA Reviewer Portal
     status = {
         "AZURE_OPENAI_ENDPOINT": "✅ set" if os.getenv("AZURE_OPENAI_ENDPOINT") else "❌ missing",
         "AZURE_OPENAI_API_KEY": "✅ set" if os.getenv("AZURE_OPENAI_API_KEY") else "❌ missing",
