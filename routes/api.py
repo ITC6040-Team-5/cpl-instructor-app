@@ -1,7 +1,11 @@
+"""
+api.py — API route handlers.
+
+Thin HTTP layer. Business logic lives in services/.
+"""
 import os
 import json
 import uuid
-import random
 import logging
 
 from flask import Blueprint, request, jsonify, current_app
@@ -9,37 +13,44 @@ from openai import AzureOpenAI
 import werkzeug.utils
 
 from db import get_db_connection
-from services.auth_service import get_current_user
+from services.auth_service import get_current_user, generate_email, validate_student_id, validate_applicant_name
+from services.case_service import (
+    ensure_session, get_case_for_session, create_case, update_case,
+    transition_status, delete_case, get_case_by_id, get_cases_for_user,
+    get_all_cases, get_message_count, get_evidence_count, compute_completion,
+)
+from services.extraction_service import extract_case_data
+from services.settings_service import get_all_settings, update_settings, get_threshold, get_setting
 from services.rag_service import retrieve_policy_context
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 logger = logging.getLogger(__name__)
 
-# In-memory fallback for local dev without DB
+# In-memory message store for local dev without DB
 mock_sessions = {}
-mock_cases = {}
 
-# ─────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════
 # Helpers
-# ─────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════
 
-ECHO_SYSTEM_PROMPT = """You are Echo, the NUPathway advisor-style AI assistant for Credit for Prior Learning (CPL) evaluation.
+ECHO_SYSTEM_PROMPT = """You are Echo, the NUPathway advisor-style AI assistant for Credit for Prior Learning (CPL) evaluation at {university_name}.
 
 You are NOT a chatbot. You are an intelligent, patient intake advisor who guides students through a structured conversational pathway. Your job is to gather complete information for a CPL case record that human reviewers will evaluate.
 
 ## Your Conversational Pathway (follow this progression naturally):
 
-1. **Greeting & Intent** — Welcome the student warmly. Ask what course or area they'd like to seek credit for, and what kind of prior learning they have (work experience, certifications, military training, etc.).
+1. **Greeting & Identity** — Welcome the student warmly. Early in the conversation, ask for their full name and university/student ID (9-10 digit number). These are needed to create their case file. Then ask what course or area they'd like to seek credit for, and what kind of prior learning they have (work experience, certifications, military training, etc.).
 
 2. **Prior Learning Capture** — Ask about their specific experience: role, responsibilities, duration, organization. Get concrete details, not generalities. Ask follow-up questions to draw out specifics.
 
 3. **Course Matching** — Based on what they describe, suggest which course competencies their experience might map to. Be specific about which learning outcomes align.
 
-4. **Evidence Collection** — Ask what documentation they can provide (certificates, performance reviews, training records, employer letters). Explain what types of evidence are strongest. Remind them they can upload files using the attachment button.
+4. **Evidence Collection** — Ask what documentation they can provide (certificates, performance reviews, training records, employer letters). Explain what types of evidence are strongest. Remind them they can upload files using the paperclip button in the message area.
 
-5. **Review & Assessment** — When you have a good picture, summarize what you've gathered. Identify any gaps. Tell the student their case looks ready or what's still needed.
+5. **Review & Assessment** — When you have a good picture, summarize what you've gathered. Identify any gaps. Tell the student when their case looks strong enough to submit (aim for around 80% completeness). Be explicit: "I think your case is ready for submission" or "You still need to provide..."
 
-6. **Submission** — When the student confirms they want to submit, use the submit_cpl_case tool to formally create their case record. Tell them their case ID and that it will be reviewed by the evaluation team.
+6. **Submission Guidance** — When enough information is gathered, explicitly tell the student: "Your case looks ready. You can click the 'Submit for Review' button in the sidebar to send it to the evaluation team." Do NOT wait for the student to ask — proactively guide them.
 
 ## Behavioral Rules:
 - Be conversational and warm, never robotic or form-like
@@ -50,6 +61,8 @@ You are NOT a chatbot. You are an intelligent, patient intake advisor who guides
 - NEVER approve or deny applications — you prepare cases for human reviewers
 - Communicate progress: "I've noted that as evidence for [competency]"
 - If uncertain, ask for clarification rather than guessing
+- After gathering identity (name + student ID), reference the student by name
+- Make clear that submission does not guarantee approval — a reviewer will make the final decision
 
 ## Context:
 {policy_context}"""
@@ -94,56 +107,6 @@ def get_message_history(session_id):
         conn.close()
 
 
-def ensure_session_and_draft(session_id, user_id, role):
-    """Ensure a Session exists and auto-create a Draft case on first interaction.
-    Returns the case_id if one was created or already exists for this session."""
-    conn = get_db_connection()
-    case_id = None
-    if not conn:
-        # In-memory fallback
-        if session_id not in mock_cases:
-            case_id = f"CPL-{random.randint(1000, 9999)}"
-            mock_cases[session_id] = {
-                "case_id": case_id,
-                "user_id": user_id,
-                "applicant": f"Student #{user_id}",
-                "status": "Draft",
-                "target_course": None,
-                "confidence_score": None,
-                "summary": None,
-            }
-        else:
-            case_id = mock_cases[session_id]["case_id"]
-        return case_id
-
-    try:
-        cursor = conn.cursor()
-        # Ensure session
-        cursor.execute("""
-            IF NOT EXISTS (SELECT 1 FROM Sessions WHERE session_id = ?)
-            INSERT INTO Sessions (session_id, user_id, role) VALUES (?, ?, ?)
-        """, (session_id, session_id, user_id, role))
-
-        # Check if a case already exists for this session
-        cursor.execute("SELECT case_id FROM Cases WHERE session_id = ?", (session_id,))
-        row = cursor.fetchone()
-        if row:
-            case_id = row.case_id
-        else:
-            # Auto-create Draft case
-            case_id = f"CPL-{random.randint(1000, 9999)}"
-            cursor.execute(
-                "INSERT INTO Cases (case_id, session_id, user_id, status) VALUES (?, ?, ?, ?)",
-                (case_id, session_id, user_id, "Draft")
-            )
-        conn.commit()
-    except Exception as e:
-        logger.warning(f"Session/draft init failed: {e}")
-    finally:
-        conn.close()
-    return case_id
-
-
 def get_client():
     """Get Azure OpenAI client."""
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
@@ -166,25 +129,58 @@ def get_client():
         return None, f"Client initialization failed: {type(e).__name__}"
 
 
-# ─────────────────────────────────────────────────
+def _build_case_response(case_data, session_id):
+    """Build the case metadata included in every chat response."""
+    if not case_data:
+        return {}
+    msg_count = get_message_count(session_id)
+    ev_count = get_evidence_count(case_id=case_data.get("case_id"), session_id=session_id)
+    pct = compute_completion(case_data, msg_count, ev_count)
+    return {
+        "case_id": case_data.get("case_id"),
+        "status": case_data.get("status"),
+        "completion_pct": pct,
+        "target_course": case_data.get("target_course"),
+        "summary": case_data.get("summary"),
+        "applicant_name": case_data.get("applicant_name"),
+        "student_id": case_data.get("student_id"),
+    }
+
+
+# ═══════════════════════════════════════════════════
 # Chat API
-# ─────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════
 
 @api_bp.post("/chat")
 def api_chat():
     try:
         user = get_current_user(request)
-        user_id = user["user_id"]
 
         data = request.get_json(silent=True) or {}
         user_message = (data.get("message") or "").strip()
         session_id = (data.get("session_id") or "anonymous_session").strip()
 
+        # Accept identity from payload (frontend sends from localStorage)
+        applicant_info = {}
+        for field in ("applicant_name", "student_id", "applicant_email"):
+            val = data.get(field) or user.get(field)
+            if val:
+                applicant_info[field] = val
+
         if not user_message:
             return jsonify({"error": "Message is required"}), 400
 
-        # Auto-create session + Draft case on first message
-        case_id = ensure_session_and_draft(session_id, user_id, user.get("role", "applicant"))
+        user_id = applicant_info.get("student_id") or user.get("user_id") or "anonymous"
+
+        # Ensure session
+        ensure_session(session_id, user_id, user.get("role", "applicant"), applicant_info)
+
+        # Get or create case for this session
+        case_data = get_case_for_session(session_id)
+        if not case_data:
+            case_data = create_case(session_id, user_id, applicant_info)
+
+        case_id = case_data["case_id"] if case_data else None
 
         # Save user message
         save_message(session_id, "user", user_message)
@@ -192,30 +188,20 @@ def api_chat():
         deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
         if not deployment:
             # LOCAL MOCK for UI testing without Azure keys
-            if "submit" in user_message.lower():
-                # Simulate case submission
-                conn = get_db_connection()
-                if conn:
-                    try:
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "UPDATE Cases SET status = ?, target_course = ?, summary = ? WHERE session_id = ?",
-                            ("Submitted", "Course (Mock)", f"Mock submission from conversation. User said: {user_message[:200]}", session_id)
-                        )
-                        cursor.execute(
-                            "UPDATE Evidence SET case_id = ? WHERE session_id = ? AND case_id IS NULL",
-                            (case_id, session_id)
-                        )
-                        conn.commit()
-                    except Exception as e:
-                        logger.warning(f"Mock submit DB update failed: {e}")
-                    finally:
-                        conn.close()
-                answer = f"**Mock Success!** Your case **{case_id}** has been submitted for review. (Note: Running in local mock mode — Azure OpenAI keys not configured.)"
-            else:
-                answer = f"[Echo Mock]: I received your message. Your draft case is **{case_id}**. Type 'submit' to simulate submission. (Azure OpenAI keys not configured for real AI responses.)"
+            answer = f"[Echo Mock]: I received your message. Case **{case_id}** is being built. (Azure OpenAI keys not configured for real AI responses.)"
             save_message(session_id, "assistant", answer)
-            return jsonify({"answer": answer, "case_id": case_id})
+
+            # Run mock extraction
+            history = get_message_history(session_id)
+            extracted = extract_case_data(history)
+            if extracted and case_id:
+                update_case(case_id, {k: v for k, v in extracted.items() if v})
+
+            # Recompute completion and apply thresholds
+            case_data = get_case_for_session(session_id) or case_data
+            case_resp = _apply_thresholds(case_data, session_id)
+
+            return jsonify({"answer": answer, **case_resp})
 
         client, err = get_client()
         if err:
@@ -223,100 +209,176 @@ def api_chat():
 
         # RAG: inject policy context
         policy_context = retrieve_policy_context(user_message)
+        university_name = get_setting("university_name") or "Northeastern University"
 
         history = get_message_history(session_id)
         messages = [
-            {"role": "system", "content": ECHO_SYSTEM_PROMPT.format(policy_context=policy_context)}
+            {"role": "system", "content": ECHO_SYSTEM_PROMPT.format(
+                policy_context=policy_context,
+                university_name=university_name,
+            )}
         ]
         messages.extend(history[-10:])
 
         if not history or history[-1].get("content") != user_message:
             messages.append({"role": "user", "content": user_message})
 
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "submit_cpl_case",
-                    "description": "Submits a formalized Credit for Prior Learning (CPL) case for human review. Call this ONLY when the user explicitly confirms they are ready to submit their application.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "target_course": {
-                                "type": "string",
-                                "description": "The course code and name the user wants credit for."
-                            },
-                            "confidence_score": {
-                                "type": "integer",
-                                "description": "1-100 score representing how well their experience aligns with the course."
-                            },
-                            "summary": {
-                                "type": "string",
-                                "description": "A structured summary of the applicant's prior learning and evidence."
-                            }
-                        },
-                        "required": ["target_course", "confidence_score", "summary"]
-                    }
-                }
-            }
-        ]
-
         response = client.chat.completions.create(
             model=deployment,
             messages=messages,
-            tools=tools,
             temperature=0.3,
         )
 
         message = response.choices[0].message
-
-        # Handle Tool Call — submit_cpl_case
-        if message.tool_calls:
-            for tool_call in message.tool_calls:
-                if tool_call.function.name == "submit_cpl_case":
-                    args = json.loads(tool_call.function.arguments)
-
-                    conn = get_db_connection()
-                    if conn:
-                        try:
-                            cursor = conn.cursor()
-                            # Update the Draft case to Submitted with structured data
-                            cursor.execute(
-                                "UPDATE Cases SET status = ?, target_course = ?, confidence_score = ?, summary = ? WHERE session_id = ?",
-                                ("Submitted", args.get("target_course"), args.get("confidence_score"), args.get("summary"), session_id)
-                            )
-                            # Attach any orphaned evidence
-                            cursor.execute(
-                                "UPDATE Evidence SET case_id = ? WHERE session_id = ? AND case_id IS NULL",
-                                (case_id, session_id)
-                            )
-                            conn.commit()
-                        except Exception as e:
-                            logger.error(f"Failed to update case on submission: {e}")
-                        finally:
-                            conn.close()
-
-                    answer = f"**Success!** Your case **{case_id}** for *{args.get('target_course')}* has been submitted for review. The evaluation team can now access your complete case record and conversation history on their dashboard. You can check your case status anytime from the Case History page."
-                    save_message(session_id, "assistant", answer)
-                    return jsonify({"answer": answer, "case_id": case_id})
-
         answer = (message.content or "").strip()
         save_message(session_id, "assistant", answer)
-        return jsonify({"answer": answer, "case_id": case_id})
+
+        # ── Progressive extraction ──
+        # Run after every response to keep case record updated
+        all_messages = get_message_history(session_id)
+        if len(all_messages) >= 2:
+            try:
+                extracted = extract_case_data(all_messages)
+                if extracted and case_id:
+                    updates = {k: v for k, v in extracted.items() if v}
+                    # Merge applicant info from extraction
+                    if updates.get("applicant_name") and not applicant_info.get("applicant_name"):
+                        applicant_info["applicant_name"] = updates["applicant_name"]
+                        # Generate email from name
+                        uni_domain = (university_name or "northeastern.edu").lower().replace(" ", "") + ".edu"
+                        if "." not in uni_domain.split("@")[-1] if "@" in uni_domain else True:
+                            uni_domain = "northeastern.edu"
+                        updates["applicant_email"] = generate_email(updates["applicant_name"], uni_domain)
+
+                    update_case(case_id, updates)
+            except Exception as e:
+                logger.warning(f"Extraction failed (non-fatal): {e}")
+
+        # Recompute completion and apply thresholds
+        case_data = get_case_for_session(session_id) or case_data
+        case_resp = _apply_thresholds(case_data, session_id)
+
+        return jsonify({"answer": answer, **case_resp})
 
     except Exception as e:
-        logger.exception("Azure OpenAI call failed")
+        logger.exception("Chat API error")
+        return jsonify({"error": f"Chat failed: {type(e).__name__}"}), 500
+
+
+def _apply_thresholds(case_data, session_id):
+    """Recompute completion and apply draft/submit thresholds.
+    Returns dict with case metadata for frontend."""
+    if not case_data:
+        return {}
+
+    case_id = case_data.get("case_id")
+    msg_count = get_message_count(session_id)
+    ev_count = get_evidence_count(case_id=case_id, session_id=session_id)
+    pct = compute_completion(case_data, msg_count, ev_count)
+
+    # Update completion in DB
+    update_case(case_id, {"completion_pct": pct})
+
+    draft_threshold = get_threshold("draft_save_threshold")
+    status = case_data.get("status", "New")
+
+    # Auto-transition New → Draft when above threshold
+    if status == "New" and pct >= draft_threshold:
+        transition_status(case_id, "Draft")
+        status = "Draft"
+
+    # Auto-transition Draft → In Progress at higher completion
+    if status == "Draft" and pct > draft_threshold + 10:
+        transition_status(case_id, "In Progress")
+        status = "In Progress"
+
+    submit_threshold = get_threshold("submit_threshold")
+
+    return {
+        "case_id": case_id,
+        "status": status,
+        "completion_pct": pct,
+        "target_course": case_data.get("target_course"),
+        "summary": case_data.get("summary"),
+        "applicant_name": case_data.get("applicant_name"),
+        "student_id": case_data.get("student_id"),
+        "can_submit": pct >= submit_threshold,
+        "draft_saved": status != "New",
+    }
+
+
+# ═══════════════════════════════════════════════════
+# Case Submit
+# ═══════════════════════════════════════════════════
+
+@api_bp.post("/case/<case_id>/submit")
+def submit_case(case_id):
+    """Applicant submits a case for review. Must be ≥ submit threshold."""
+    case = get_case_by_id(case_id)
+    if not case:
+        return jsonify({"error": "Case not found"}), 404
+
+    submit_threshold = get_threshold("submit_threshold")
+    pct = case.get("completion_pct", 0)
+
+    if pct < submit_threshold:
         return jsonify({
-            "error": f"Azure OpenAI call failed: {type(e).__name__}"
-        }), 500
+            "error": f"Case is only {pct}% complete. Must reach {submit_threshold}% before submitting.",
+            "completion_pct": pct,
+        }), 400
+
+    if case.get("status") in ("Submitted", "Under Review", "Approved", "Denied"):
+        return jsonify({"error": f"Case is already {case['status']}"}), 400
+
+    # Generate final summary via LLM if messages exist
+    final_summary = case.get("summary")
+    messages = case.get("messages", [])
+    if messages and len(messages) >= 2:
+        try:
+            extracted = extract_case_data(messages)
+            if extracted.get("summary"):
+                final_summary = extracted["summary"]
+            if extracted.get("confidence_score"):
+                update_case(case_id, {"confidence_score": extracted["confidence_score"]})
+        except Exception as e:
+            logger.warning(f"Final extraction on submit failed: {e}")
+
+    updates = {"status": "Submitted"}
+    if final_summary:
+        updates["summary"] = final_summary
+
+    transition_status(case_id, "Submitted")
+    update_case(case_id, updates)
+
+    return jsonify({
+        "status": "success",
+        "case_id": case_id,
+        "new_status": "Submitted",
+        "message": "Your case has been submitted for review. A reviewer will evaluate it — submission does not guarantee approval.",
+    })
 
 
-# ─────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════
+# Case Delete
+# ═══════════════════════════════════════════════════
+
+@api_bp.delete("/case/<case_id>")
+def delete_case_endpoint(case_id):
+    """Delete a low-completeness draft case."""
+    max_pct = get_threshold("delete_allowed_below")
+    success, error = delete_case(case_id, max_completion=max_pct)
+    if not success:
+        return jsonify({"error": error}), 400
+    return jsonify({"status": "success", "message": "Case deleted."})
+
+
+# ═══════════════════════════════════════════════════
 # Evidence Upload
-# ─────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════
 
-ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'zip', 'doc', 'docx'}
+ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx', 'md'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -332,7 +394,7 @@ def upload_evidence():
         return jsonify({"error": "Empty filename"}), 400
 
     if not allowed_file(file.filename):
-        return jsonify({"error": "File type not allowed. Supported: PDF, TXT, PNG, JPG, ZIP, DOC"}), 400
+        return jsonify({"error": "File type not allowed. Supported: JPEG, PNG, PDF, DOC, MD"}), 400
 
     file.seek(0, os.SEEK_END)
     file_length = file.tell()
@@ -352,29 +414,20 @@ def upload_evidence():
     case_id = request.form.get("case_id")
 
     user = get_current_user(request)
-    user_id = user["user_id"]
+    user_id = user.get("student_id") or user.get("user_id") or "anonymous"
 
-    # If no explicit case_id but session has a draft, link to it
+    # Link to case if we can find one
     if not case_id and session_id:
-        conn = get_db_connection()
-        if conn:
-            try:
-                cursor = conn.cursor()
-                cursor.execute("SELECT case_id FROM Cases WHERE session_id = ?", (session_id,))
-                row = cursor.fetchone()
-                if row:
-                    case_id = row.case_id
-            except Exception:
-                pass
-            finally:
-                conn.close()
+        case_data = get_case_for_session(session_id)
+        if case_data:
+            case_id = case_data["case_id"]
 
     conn = get_db_connection()
     if conn:
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO Evidence (case_id, session_id, user_id, file_name, file_path) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO Evidence (case_id, session_id, user_id, file_name, file_path, status) VALUES (?, ?, ?, ?, ?, 'Uploaded')",
                 (case_id, session_id, user_id, filename, file_path)
             )
             conn.commit()
@@ -383,140 +436,105 @@ def upload_evidence():
         finally:
             conn.close()
 
-    return jsonify({"status": "success", "filename": filename, "case_id": case_id})
+    # Recompute completion after evidence upload
+    if case_id:
+        case_data = get_case_for_session(session_id) if session_id else None
+        if case_data:
+            msg_count = get_message_count(session_id)
+            ev_count = get_evidence_count(case_id=case_id, session_id=session_id)
+            pct = compute_completion(case_data, msg_count, ev_count)
+            update_case(case_id, {"completion_pct": pct})
+
+    return jsonify({
+        "status": "success",
+        "filename": filename,
+        "case_id": case_id,
+        "message": "Evidence uploaded successfully.",
+    })
 
 
-# ─────────────────────────────────────────────────
-# Applicant-Facing Case APIs
-# ─────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════
+# Applicant Case APIs
+# ═══════════════════════════════════════════════════
 
 @api_bp.get("/cases")
 def get_my_cases():
-    """Returns cases for the current user (applicant view)."""
+    """Returns cases for the current user (applicant view). Excludes 'New' status."""
     user = get_current_user(request)
-    user_id = user["user_id"]
+    user_id = user.get("student_id") or user.get("user_id") or "anonymous"
+    cases = get_cases_for_user(user_id)
 
-    conn = get_db_connection()
-    if not conn:
-        # Return mock cases for local dev
-        cases = list(mock_cases.values())
-        return jsonify({"cases": cases})
+    # Applicant-friendly ordering: simple numbering, no raw case IDs
+    result = []
+    for i, c in enumerate(reversed(cases), 1):  # Oldest first for numbering
+        result.append({
+            "index": i,
+            "case_id": c["case_id"],
+            "target_course": c.get("target_course") or "Building case...",
+            "status": c.get("status"),
+            "completion_pct": c.get("completion_pct", 0),
+            "summary": c.get("summary"),
+            "applicant_name": c.get("applicant_name"),
+            "created_at": c.get("created_at"),
+            "updated_at": c.get("updated_at"),
+            "session_id": c.get("session_id"),
+        })
+    result.reverse()  # Most recent first for display
 
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT case_id, target_course, status, confidence_score, summary, session_id, created_at FROM Cases WHERE user_id = ? ORDER BY created_at DESC",
-            (user_id,)
-        )
-        rows = cursor.fetchall()
-        cases = []
-        for r in rows:
-            cases.append({
-                "case_id": r.case_id,
-                "target_course": r.target_course or "Not yet determined",
-                "status": r.status,
-                "confidence_score": r.confidence_score,
-                "summary": r.summary,
-                "session_id": r.session_id,
-                "created_at": str(r.created_at) if r.created_at else None,
-            })
-        return jsonify({"cases": cases})
-    except Exception as e:
-        logger.error(f"Failed to fetch user cases: {e}")
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
-
-
-# ─────────────────────────────────────────────────
-# Admin / Reviewer APIs
-# ─────────────────────────────────────────────────
-
-@api_bp.get("/admin/cases")
-def get_admin_cases():
-    """Returns all cases for admin dashboard."""
-    conn = get_db_connection()
-    if not conn:
-        # Return mock cases for local dev
-        cases = list(mock_cases.values())
-        if not cases:
-            cases = [
-                {"case_id": "CPL-DEMO-1", "applicant": "Demo User", "target_course": "No DB Connected", "status": "N/A", "confidence_score": 0, "assignee": "—"},
-            ]
-        return jsonify({"cases": cases})
-
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT case_id, user_id, target_course, status, confidence_score, summary, created_at FROM Cases ORDER BY created_at DESC")
-        rows = cursor.fetchall()
-        cases = []
-        for r in rows:
-            cases.append({
-                "case_id": r.case_id,
-                "applicant": f"Student #{r.user_id}" if r.user_id else "Unknown",
-                "target_course": r.target_course or "Not yet determined",
-                "status": r.status,
-                "confidence_score": r.confidence_score,
-                "assignee": "Unassigned",
-                "summary": r.summary,
-                "created_at": str(r.created_at) if r.created_at else None,
-            })
-        return jsonify({"cases": cases})
-    except Exception as e:
-        logger.error(f"Failed to fetch cases: {e}")
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
+    return jsonify({"cases": result})
 
 
 @api_bp.get("/case/<case_id>")
 def get_case(case_id):
     """Returns full case details including evidence and messages."""
-    conn = get_db_connection()
-    if not conn:
-        # Check in-memory
-        for sid, c in mock_cases.items():
-            if c["case_id"] == case_id:
-                return jsonify({
-                    **c,
-                    "applicant": "Local User",
-                    "evidence": [],
-                    "messages": mock_sessions.get(sid, [])
-                })
+    case = get_case_by_id(case_id)
+    if not case:
         return jsonify({"error": "Case not found"}), 404
 
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT case_id, user_id, target_course, status, confidence_score, summary, session_id, created_at FROM Cases WHERE case_id = ?", (case_id,))
-        row = cursor.fetchone()
-        if not row:
-            return jsonify({"error": "Case not found"}), 404
+    return jsonify({
+        "case_id": case.get("case_id"),
+        "case_seq": case.get("case_seq"),
+        "applicant_name": case.get("applicant_name") or "Not yet provided",
+        "student_id": case.get("student_id"),
+        "applicant_email": case.get("applicant_email"),
+        "target_course": case.get("target_course") or "Not yet determined",
+        "status": case.get("status"),
+        "completion_pct": case.get("completion_pct", 0),
+        "confidence_score": case.get("confidence_score"),
+        "summary": case.get("summary") or "No summary generated yet.",
+        "reviewer_notes": case.get("reviewer_notes"),
+        "session_id": case.get("session_id"),
+        "created_at": case.get("created_at"),
+        "updated_at": case.get("updated_at"),
+        "evidence": case.get("evidence", []),
+        "messages": case.get("messages", []),
+    })
 
-        # Evidence
-        cursor.execute("SELECT file_name, file_path, upload_time FROM Evidence WHERE case_id = ? OR (session_id = ? AND case_id IS NULL)", (case_id, row.session_id))
-        evidence = [{"file_name": e.file_name, "upload_time": str(e.upload_time) if e.upload_time else None} for e in cursor.fetchall()]
 
-        # Messages
-        cursor.execute("SELECT role, content, timestamp FROM Messages WHERE session_id = ? ORDER BY timestamp ASC", (row.session_id,))
-        messages = [{"role": msg.role, "content": msg.content, "timestamp": str(msg.timestamp) if msg.timestamp else None} for msg in cursor.fetchall()]
+# ═══════════════════════════════════════════════════
+# Admin / Reviewer APIs
+# ═══════════════════════════════════════════════════
 
-        return jsonify({
-            "case_id": case_id,
-            "applicant": f"Student #{row.user_id}" if row.user_id else "Unknown",
-            "target_course": row.target_course or "Not yet determined",
-            "status": row.status,
-            "confidence_score": row.confidence_score,
-            "summary": row.summary or "No summary generated yet.",
-            "session_id": row.session_id,
-            "created_at": str(row.created_at) if row.created_at else None,
-            "evidence": evidence,
-            "messages": messages,
+@api_bp.get("/admin/cases")
+def get_admin_cases():
+    """Returns all cases for admin dashboard."""
+    cases = get_all_cases()
+    result = []
+    for c in cases:
+        result.append({
+            "case_id": c.get("case_id"),
+            "applicant": c.get("applicant_name") or f"Student #{c.get('student_id') or 'Unknown'}",
+            "student_id": c.get("student_id"),
+            "target_course": c.get("target_course") or "Not yet determined",
+            "status": c.get("status"),
+            "completion_pct": c.get("completion_pct", 0),
+            "confidence_score": c.get("confidence_score"),
+            "summary": c.get("summary"),
+            "assignee": "Unassigned",
+            "created_at": c.get("created_at"),
+            "updated_at": c.get("updated_at"),
         })
-    except Exception as e:
-        logger.error(f"Failed to fetch case details: {e}")
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
+    return jsonify({"cases": result})
 
 
 @api_bp.post("/case/<case_id>/review")
@@ -529,33 +547,59 @@ def review_case(case_id):
     status_map = {
         "Approve": "Approved",
         "Deny": "Denied",
-        "Request Revision": "Info Requested",
+        "Request Revision": "Revision Requested",
     }
     new_status = status_map.get(decision, decision)
 
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({"status": "success", "case_id": case_id, "decision": decision, "db_updated": False})
+    success = transition_status(case_id, new_status, notes=notes if notes else None)
+    if not success:
+        return jsonify({"error": f"Cannot transition to {new_status}"}), 400
 
-    try:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE Cases SET status = ? WHERE case_id = ?", (new_status, case_id))
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to update case: {e}")
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
+    if notes:
+        update_case(case_id, {"reviewer_notes": notes})
 
-    return jsonify({"status": "success", "case_id": case_id, "decision": decision, "new_status": new_status, "db_updated": True})
+    return jsonify({
+        "status": "success",
+        "case_id": case_id,
+        "decision": decision,
+        "new_status": new_status,
+        "message": f"Case {decision.lower()}d successfully.",
+    })
 
 
-# ─────────────────────────────────────────────────
-# Seed Data (for MVP verification)
-# ─────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════
+# Settings API
+# ═══════════════════════════════════════════════════
+
+@api_bp.get("/admin/settings")
+def get_settings_endpoint():
+    """Get all system settings."""
+    return jsonify(get_all_settings())
+
+
+@api_bp.post("/admin/settings")
+def update_settings_endpoint():
+    """Update system settings."""
+    data = request.get_json(silent=True) or {}
+    if not data:
+        return jsonify({"error": "No settings provided"}), 400
+
+    result = update_settings(data)
+    if result is None:
+        return jsonify({"error": "Failed to update settings"}), 500
+
+    return jsonify({"status": "success", "settings": result, "message": "Settings saved."})
+
+
+# ═══════════════════════════════════════════════════
+# Seed Data
+# ═══════════════════════════════════════════════════
 
 def seed_demo_data():
-    """Insert realistic demo cases if the database is empty. Called once at startup."""
+    """Insert realistic demo cases if the DB is empty. Gated by SEED_DEMO_DATA env var."""
+    if os.getenv("SEED_DEMO_DATA", "true").lower() != "true":
+        return
+
     conn = get_db_connection()
     if not conn:
         return
@@ -565,81 +609,99 @@ def seed_demo_data():
         cursor.execute("SELECT COUNT(*) FROM Cases")
         count = cursor.fetchone()[0]
         if count > 0:
-            return  # Data already exists
+            return
 
         demo_data = [
             {
                 "session_id": "demo_session_mgmt",
-                "user_id": "100001",
-                "case_id": "CPL-2025-001",
+                "user_id": "100000001",
+                "applicant_name": "Maria Santos",
+                "student_id": "100000001",
+                "case_id": "CPL-2026-0001",
+                "case_seq": 1,
                 "target_course": "MGT301: Principles of Management",
                 "status": "Submitted",
+                "completion_pct": 85,
                 "confidence_score": 85,
                 "summary": "5 years as Assistant Manager at RetailCo. Managed staff of 15, handled scheduling, inventory management, and conflict resolution. Strong evidence in planning, organizing, and leadership competencies.",
                 "messages": [
-                    ("user", "I'd like to get credit for MGT301. I've been an assistant manager at RetailCo for 5 years."),
-                    ("assistant", "That sounds like strong experience for MGT301: Principles of Management. Can you tell me more about your day-to-day responsibilities?"),
-                    ("user", "I manage a team of 15, handle scheduling, inventory tracking, and resolve conflicts between staff. I also train new hires."),
-                    ("assistant", "Excellent. Your experience maps well to several course learning outcomes — particularly Planning & Organizing, Leadership & Directing, and potentially Controlling/Metrics. Do you have any documentation like performance reviews or training materials you've created?"),
+                    ("user", "Hi, my name is Maria Santos and my student ID is 100000001. I'd like to get credit for MGT301."),
+                    ("assistant", "Welcome Maria! I've noted your student ID. Let's talk about your experience — what kind of prior learning or work experience do you have related to management?"),
+                    ("user", "I've been an assistant manager at RetailCo for 5 years. I manage a team of 15, handle scheduling, inventory tracking, and resolve conflicts between staff."),
+                    ("assistant", "That's excellent experience. Your responsibilities map well to several MGT301 learning outcomes — particularly Planning & Organizing, Leadership & Directing, and Controlling/Metrics. Do you have documentation like performance reviews or training materials?"),
                     ("user", "Yes, I have my annual performance reviews and a training guide I wrote for new hires on our POS system."),
-                    ("assistant", "Those would be strong evidence pieces. Please upload them using the attachment button. I'd also recommend any inventory or scheduling reports that show your metrics-driven work."),
+                    ("assistant", "Those would be strong evidence pieces. Please upload them using the paperclip button. Your case is looking very strong — I'd estimate around 85% alignment with MGT301 outcomes."),
                 ],
             },
             {
                 "session_id": "demo_session_it",
-                "user_id": "100002",
-                "case_id": "CPL-2025-002",
+                "user_id": "100000002",
+                "applicant_name": "James Chen",
+                "student_id": "100000002",
+                "case_id": "CPL-2026-0002",
+                "case_seq": 2,
                 "target_course": "IT200: Introduction to Networking",
                 "status": "Submitted",
+                "completion_pct": 72,
                 "confidence_score": 62,
-                "summary": "AWS Solutions Architect certified. 3 years managing cloud infrastructure. Strong networking fundamentals but missing formal certification in routing/switching protocols specifically.",
+                "summary": "AWS Solutions Architect certified. 3 years managing cloud infrastructure. Strong networking fundamentals but missing formal certification in routing/switching protocols.",
                 "messages": [
-                    ("user", "I have an AWS Solutions Architect certification and 3 years of cloud infrastructure experience. Can I get credit for IT200?"),
-                    ("assistant", "Your AWS certification is a great start for IT200: Introduction to Networking. The course covers networking fundamentals, TCP/IP, routing, and switching. Your cloud experience likely covers many of these. What specific networking tasks do you handle day-to-day?"),
+                    ("user", "I'm James Chen, student ID 100000002. I have an AWS Solutions Architect certification and want credit for IT200."),
+                    ("assistant", "Welcome James! Your AWS certification is a great start for IT200: Introduction to Networking. The course covers networking fundamentals, TCP/IP, routing, and switching. What specific networking tasks do you handle?"),
                     ("user", "I configure VPCs, manage security groups, set up load balancers, and handle DNS configuration. I also do some basic network troubleshooting."),
-                    ("assistant", "That covers strong ground in TCP/IP and network architecture. I notice the course also covers physical layer concepts and routing protocols — do you have experience with on-premises networking as well?"),
+                    ("assistant", "That covers strong ground in TCP/IP and network architecture. The course also covers physical layer concepts and routing protocols — do you have experience with on-premises networking as well?"),
                 ],
             },
             {
                 "session_id": "demo_session_eng",
-                "user_id": "100003",
-                "case_id": "CPL-2025-003",
+                "user_id": "100000003",
+                "applicant_name": "Sarah Williams",
+                "student_id": "100000003",
+                "case_id": "CPL-2026-0003",
+                "case_seq": 3,
                 "target_course": "ENG101: Written Communication",
                 "status": "Approved",
+                "completion_pct": 95,
                 "confidence_score": 92,
-                "summary": "Professional technical writer for 7 years at a major tech firm. Published style guide used by 200+ writers. Portfolio includes whitepapers, user documentation, and training materials across multiple domains.",
+                "summary": "Professional technical writer for 7 years at a major tech firm. Published style guide used by 200+ writers. Portfolio includes whitepapers, user documentation, and training materials.",
                 "messages": [
-                    ("user", "I've been a professional technical writer for 7 years. I'd like credit for ENG101."),
-                    ("assistant", "Seven years of professional writing is compelling experience for ENG101: Written Communication. What types of writing have you done?"),
+                    ("user", "I'm Sarah Williams, ID 100000003. I've been a professional technical writer for 7 years and want credit for ENG101."),
+                    ("assistant", "Welcome Sarah! Seven years of professional writing is compelling experience for ENG101: Written Communication. What types of writing have you done?"),
                     ("user", "Whitepapers, API documentation, user guides, internal training materials. I also wrote the company style guide that 200+ writers now use."),
-                    ("assistant", "That's exceptionally strong evidence. Your work spans multiple writing competencies — technical, instructional, and editorial. I'd recommend uploading samples of each type, along with any recognition or reviews of your work."),
+                    ("assistant", "That's exceptionally strong evidence spanning multiple writing competencies — technical, instructional, and editorial. Your case looks ready for submission. Please upload samples of your work and click 'Submit for Review'."),
                 ],
             },
         ]
 
         for case in demo_data:
-            # Create session
             cursor.execute("""
                 IF NOT EXISTS (SELECT 1 FROM Sessions WHERE session_id = ?)
-                INSERT INTO Sessions (session_id, user_id, role) VALUES (?, ?, 'applicant')
-            """, (case["session_id"], case["session_id"], case["user_id"]))
+                INSERT INTO Sessions (session_id, user_id, role, applicant_name, student_id)
+                VALUES (?, ?, 'applicant', ?, ?)
+            """, (case["session_id"], case["session_id"], case["user_id"],
+                  case["applicant_name"], case["student_id"]))
 
-            # Create case
-            cursor.execute(
-                "INSERT INTO Cases (case_id, session_id, user_id, target_course, status, confidence_score, summary) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (case["case_id"], case["session_id"], case["user_id"],
-                 case["target_course"], case["status"], case["confidence_score"], case["summary"])
-            )
+            cursor.execute("""
+                INSERT INTO Cases (case_id, case_seq, session_id, user_id, applicant_name,
+                                   student_id, target_course, status, completion_pct,
+                                   confidence_score, summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (case["case_id"], case["case_seq"], case["session_id"], case["user_id"],
+                  case["applicant_name"], case["student_id"], case["target_course"],
+                  case["status"], case["completion_pct"], case["confidence_score"], case["summary"]))
 
-            # Create messages
             for role, content in case["messages"]:
                 cursor.execute(
                     "INSERT INTO Messages (session_id, role, content) VALUES (?, ?, ?)",
                     (case["session_id"], role, content)
                 )
 
+        # Also seed the CaseSequence to avoid conflicts
+        for i in range(3):
+            cursor.execute("INSERT INTO CaseSequence DEFAULT VALUES")
+
         conn.commit()
-        logger.info("Demo data seeded successfully: 3 cases with conversation histories.")
+        logger.info("Demo data seeded: 3 cases with real names and conversation histories.")
     except Exception as e:
         logger.error(f"Failed to seed demo data: {e}")
     finally:

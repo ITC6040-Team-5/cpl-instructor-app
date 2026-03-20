@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CPL Evaluation Prototype</title>
+    <title>NUPathway — Credit for Prior Learning</title>
+    <meta name="description" content="NUPathway helps students earn credit for prior learning through AI-guided portfolio evaluation.">
     <!-- Inter Font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,7 +39,7 @@
                         <path d="M2 12L12 17L22 12" stroke="url(#gradient-brand)" stroke-width="2"
                             stroke-linecap="round" stroke-linejoin="round" fill="none" />
                     </svg>
-                    <span class="sidebar-text">ProtoEval</span>
+                    <span class="sidebar-text">NUPathway</span>
                 </div>
                 <!-- Toggle Button -->
                 <button class="btn-icon-subtle toggle-sidebar" id="sidebar-toggle" aria-label="Toggle Sidebar">
@@ -152,14 +153,16 @@
 
             <!-- User Footer in Sidebar -->
             <div class="sidebar-footer">
-                <div class="user-profile" id="role-switch-btn" title="Switch Prototype Role">
-                    <div class="avatar" id="profile-avatar">JS</div>
+                <div class="user-profile" id="role-switch-btn" title="Switch Role">
+                    <div class="avatar" id="profile-avatar">AP</div>
                     <div class="user-info sidebar-text">
-                        <div class="user-name" id="profile-name">Jane Student</div>
+                        <div class="user-name" id="profile-name">Applicant</div>
                         <div class="user-role" id="profile-role">Applicant</div>
                     </div>
-                    <i class="ph ph-arrows-left-right sidebar-text"
-                        style="margin-left: auto; color: var(--text-muted);"></i>
+                    <div class="sidebar-text" style="margin-left: auto; display: flex; align-items: center; gap: 4px; color: var(--text-muted); font-size: 0.75rem;">
+                        <i class="ph ph-arrows-left-right"></i>
+                        <span id="role-switch-label">Switch to Reviewer</span>
+                    </div>
                 </div>
             </div>
         </nav>
@@ -241,8 +244,8 @@
                         <!-- Chat Column -->
                         <div class="chat-column">
                             <div class="chat-header">
-                                <h2>Case #1042: CS400 Evaluation</h2>
-                                <span class="badge gray">AI Assistant</span>
+                                <h2>New Evaluation</h2>
+                                <span class="badge gray">Echo AI Assistant</span>
                             </div>
 
                             <div class="chat-transcript" id="intake-chat">
@@ -252,7 +255,7 @@
                             <!-- Floating Input Composer -->
                             <div class="composer-area">
                                 <div class="composer-box">
-                                    <button class="btn-icon-subtle"><svg width="20" height="20" viewBox="0 0 24 24"
+                                    <button class="btn-icon-subtle" id="chat-attach-btn" title="Attach evidence file"><svg width="20" height="20" viewBox="0 0 24 24"
                                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                             stroke-linejoin="round">
                                             <path
@@ -323,10 +326,10 @@
 
                             <div class="record-footer">
                                 <div class="progress-bar-bg">
-                                    <div class="progress-bar-fill" style="width: 65%;"></div>
+                                    <div class="progress-bar-fill" style="width: 0%;"></div>
                                 </div>
-                                <div class="progress-text">65% Complete</div>
-                                <button class="btn-primary full-width mt-3">Submit for Review</button>
+                                <div class="progress-text">0% Complete</div>
+                                <button class="btn-primary full-width mt-3" id="submit-for-review-btn" disabled title="Case must reach 80% completion">Submit for Review</button>
                             </div>
                         </div>
                     </div>
@@ -419,68 +422,45 @@
                         <button class="btn-secondary mb-4" id="back-to-case-list">
                             <i class="ph ph-arrow-left"></i> Back to Case History
                         </button>
+
+                        <div class="case-detail-header mb-4">
+                            <h2 id="case-detail-title">Case Details</h2>
+                            <span id="case-detail-status" class="badge gray">—</span>
+                        </div>
+
                         <div class="status-layout">
                             <div class="status-main">
-                                <div class="card p-0">
-                                    <div class="timeline-container vertical">
-                                        <div class="timeline-step completed">
-                                            <div class="step-indicator"><i class="ph-bold ph-check"></i></div>
-                                            <div class="step-content">
-                                                <h4>Draft Started</h4>
-                                                <p>March 1, 2026</p>
-                                            </div>
-                                        </div>
+                                <!-- Summary Card -->
+                                <div class="card mb-4">
+                                    <h3>Case Summary</h3>
+                                    <p class="text-muted" id="case-detail-summary">No summary yet.</p>
+                                    <p class="text-sm text-muted mt-2" id="case-detail-completion">0% complete</p>
+                                </div>
 
-                                        <div class="timeline-step active">
-                                            <div class="step-indicator inner-dot"></div>
-                                            <div class="step-content">
-                                                <h4>Intake and Evidence Gathering</h4>
-                                                <p>In Progress. The AI assistant is waiting for evidence regarding
-                                                    budget
-                                                    tracking.</p>
-                                                <div class="action-box mt-3">
-                                                    <h5>Action Required</h5>
-                                                    <p>Link physical evidence for "Budget Tracking" competency.</p>
-                                                    <button class="btn-secondary mt-2"
-                                                        onclick="document.querySelectorAll('.screen-view').forEach(s=>s.classList.remove('active'));document.getElementById('intake-screen').classList.add('active');document.getElementById('dynamic-breadcrumb').innerText='Applicant View / Guided Intake'">Continue
-                                                        Intake</button>
-                                                </div>
-                                            </div>
-                                        </div>
+                                <!-- Reviewer Notes (shown if applicable) -->
+                                <div class="card mb-4" id="case-detail-reviewer-notes" style="display:none; border-left: 3px solid var(--status-yellow-text);">
+                                    <h4><i class="ph ph-note-pencil"></i> Reviewer Feedback</h4>
+                                    <p class="notes-content text-muted"></p>
+                                </div>
 
-                                        <div class="timeline-step future">
-                                            <div class="step-indicator"></div>
-                                            <div class="step-content">
-                                                <h4>Submitted for Review</h4>
-                                                <p>Pending</p>
-                                            </div>
-                                        </div>
+                                <!-- Timeline -->
+                                <div class="card p-0" id="case-detail-timeline">
+                                    <!-- Dynamic: populated by app.js -->
+                                </div>
 
-                                        <div class="timeline-step future">
-                                            <div class="step-indicator"></div>
-                                            <div class="step-content">
-                                                <h4>Evaluator Review</h4>
-                                                <p>SME will review portfolio against rubric.</p>
-                                            </div>
-                                        </div>
-
-                                        <div class="timeline-step future">
-                                            <div class="step-indicator"></div>
-                                            <div class="step-content">
-                                                <h4>Final Decision</h4>
-                                                <p>Credit outcome recorded.</p>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <!-- Action Buttons -->
+                                <div class="case-detail-actions mt-4" style="display: flex; gap: 12px;">
+                                    <button class="btn-primary" id="view-conversation-btn"><i class="ph ph-chat-text"></i> View Conversation</button>
+                                    <button class="btn-secondary" id="continue-conversation-btn" style="display:none;"><i class="ph ph-arrow-right"></i> Continue Conversation</button>
+                                    <button class="btn-secondary text-danger" id="delete-case-btn" style="display:none;"><i class="ph ph-trash"></i> Delete Case</button>
                                 </div>
                             </div>
+
                             <div class="status-sidebar">
                                 <div class="card bg-gray">
                                     <h3>Need Help?</h3>
-                                    <p class="text-sm mt-2 mb-3">If you are stuck mapping your competencies or need more
-                                        time, reach out to your CPL Advisor.</p>
-                                    <button class="btn-secondary full-width"><i class="ph ph-chat-circle"></i> Message
-                                        Advisor</button>
+                                    <p class="text-sm mt-2 mb-3">If you are stuck mapping your competencies, reach out to your CPL Advisor.</p>
+                                    <button class="btn-secondary full-width"><i class="ph ph-chat-circle"></i> Message Advisor</button>
                                 </div>
                             </div>
                         </div>
@@ -543,7 +523,7 @@
                         </div>
                         <div class="actions-row">
                             <button class="btn-secondary text-danger">Deny</button>
-                            <button class="btn-secondary">Request Revision</button>
+                            <button class="btn-secondary" id="request-revision-btn">Request Revision</button>
                             <button class="btn-primary"><i class="ph ph-check"></i> Approve Credit</button>
                         </div>
                     </div>
@@ -620,56 +600,71 @@
 
                 <!-- 7. Admin Settings Screen -->
                 <section id="admin-settings-screen" class="screen-view">
-                    <div class="content-header">
-                        <h2>System Settings</h2>
-                        <p class="subtitle">Configure AI behavior, routing, and institutional policies.</p>
+                    <div class="content-header flex-between">
+                        <div>
+                            <h2>System Settings</h2>
+                            <p class="subtitle">Configure institution, thresholds, and AI behavior.</p>
+                        </div>
+                        <button class="btn-primary" id="save-settings-btn"><i class="ph ph-floppy-disk"></i> Save Settings</button>
                     </div>
 
                     <div class="settings-grid">
+                        <!-- Card 1: Institution & Thresholds -->
                         <div class="card">
-                            <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-robot"></i>
+                            <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-buildings"></i></div>
+                            <h3>Institution & Thresholds</h3>
+                            <p class="text-sm text-muted mb-4">Core configuration for case lifecycle behavior.</p>
+
+                            <div class="field-group mb-3">
+                                <label>University Name</label>
+                                <input type="text" class="input-field" id="setting-university-name" value="Northeastern University" placeholder="Enter university name">
                             </div>
+                            <div class="field-group mb-3">
+                                <label>Draft Save Threshold (%)</label>
+                                <input type="number" class="input-field" id="setting-draft-threshold" value="30" min="0" max="100">
+                                <span class="text-sm text-muted">Minimum completion to auto-save draft</span>
+                            </div>
+                            <div class="field-group mb-3">
+                                <label>Submit Threshold (%)</label>
+                                <input type="number" class="input-field" id="setting-submit-threshold" value="80" min="0" max="100">
+                                <span class="text-sm text-muted">Minimum completion to allow submission</span>
+                            </div>
+                            <div class="field-group mb-3">
+                                <label>Delete Allowed Below (%)</label>
+                                <input type="number" class="input-field" id="setting-delete-threshold" value="50" min="0" max="100">
+                                <span class="text-sm text-muted">Applicants can delete cases below this</span>
+                            </div>
+                        </div>
+
+                        <!-- Card 2: AI Persona & Guardrails -->
+                        <div class="card">
+                            <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-robot"></i></div>
                             <h3>AI Persona & Guardrails</h3>
-                            <p class="text-sm text-muted mb-4">Configure the tone, bounds, and prompt instructions for
-                                the intake assistant.</p>
+                            <p class="text-sm text-muted mb-4">Configure behavior of the intake AI assistant.</p>
                             <div class="setting-row flex-between py-2 border-bottom">
                                 <span>Strict Domain Mode</span>
-                                <div class="toggle active"></div>
+                                <div class="toggle active" id="toggle-strict-domain"></div>
                             </div>
                             <div class="setting-row flex-between py-2 border-bottom">
                                 <span>Require Evidence Links</span>
-                                <div class="toggle active"></div>
+                                <div class="toggle active" id="toggle-require-evidence"></div>
                             </div>
-                            <button class="btn-secondary mt-3">Edit System Prompts</button>
+                            <button class="btn-secondary mt-3" disabled title="Coming soon">Edit System Prompts</button>
                         </div>
 
+                        <!-- Card 3: Workflow & Routing -->
                         <div class="card">
-                            <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-users"></i>
-                            </div>
-                            <h3>Roles & Permissions</h3>
-                            <p class="text-sm text-muted mb-4">Manage access levels for Advisors, SMEs, and Reviewers.
-                            </p>
-                            <ul class="text-sm text-muted list-none p-0 mb-4">
-                                <li class="mb-1"><strong>Advisors (5)</strong> - Can view & edit cases</li>
-                                <li class="mb-1"><strong>SMEs (12)</strong> - Can review & score assigned</li>
-                                <li><strong>Admins (2)</strong> - System config</li>
-                            </ul>
-                            <button class="btn-secondary">Manage Team</button>
-                        </div>
-
-                        <div class="card">
-                            <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-network"></i>
-                            </div>
+                            <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-network"></i></div>
                             <h3>Workflow & Routing</h3>
-                            <p class="text-sm text-muted mb-4">Rules for auto-assigning cases based on target program or
-                                course.</p>
+                            <p class="text-sm text-muted mb-4">Rules for auto-assigning cases based on target program or course.</p>
                             <div class="rule-box bg-gray p-2 text-sm rounded mb-2">
                                 If <code>Course == CS*</code> route to <code>Prof. Turing</code>
                             </div>
                             <div class="rule-box bg-gray p-2 text-sm rounded mb-4">
-                                If <code>Confidence < 60%</code> flag as <code>Needs Advisor</code>
+                                If <code>Confidence &lt; 60%</code> flag as <code>Needs Advisor</code>
                             </div>
-                            <button class="btn-secondary"><i class="ph ph-plus"></i> Add Rule</button>
+                            <button class="btn-secondary" disabled title="Coming soon"><i class="ph ph-plus"></i> Add Rule</button>
+                            <p class="text-sm text-muted mt-2"><i class="ph ph-info"></i> Routing rules coming in a future update.</p>
                         </div>
                     </div>
                 </section>
@@ -678,6 +673,7 @@
         </main>
     </div>
 
+    <script src="{{ url_for('static', filename='notifications.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 

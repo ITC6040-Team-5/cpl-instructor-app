@@ -6,81 +6,107 @@ This document is the primary, single source of truth for the NUPathway system ar
 
 ## 1. Current Architecture
 
-Flask SPA with modular blueprints, Azure SQL persistence, and Azure OpenAI conversational AI.
+Flask SPA with modular blueprints, service layer, Azure SQL persistence, and Azure OpenAI conversational AI.
 
 - **Entrypoint (`app.py`)**: Creates Flask app, initializes DB schema, registers blueprints, seeds demo data.
 - **Route Blueprints (`routes/`)**:
-  - `pages.py`: Serves the SPA (`index.html`) for all client routes: `/`, `/chat`, `/admin`, `/admin/review`, `/cases`.
+  - `pages.py`: Serves the SPA (`index.html`) for all client routes: `/`, `/chat`, `/admin`, `/admin/review`, `/admin/settings`, `/cases`.
   - `system.py`: Diagnostic endpoints: `/system/config`, `/health`, `/versions`, `/dbcheck`.
-  - `api.py`: All business logic — chat orchestration, case lifecycle, admin queue, evidence upload.
-- **Database Layer (`db.py`)**: Auto-initializes schema via `pyodbc` + `SQL_CONNECTION_STRING`. Tables: `Sessions`, `Cases`, `Messages`, `Evidence`.
-- **Services Layer**:
-  - `auth_service.py`: Stubbed user identity (extension point for Entra ID/SSO).
+  - `api.py`: Thin HTTP layer — delegates to services. Endpoints: `/api/chat`, `/api/cases`, `/api/case/<id>`, `/api/case/<id>/submit`, `/api/case/<id>/review`, `DELETE /api/case/<id>`, `/api/admin/cases`, `/api/admin/settings`, `/api/evidence/upload`.
+- **Database Layer (`db.py`)**: Auto-initializes schema via `pyodbc` + `SQL_CONNECTION_STRING`. Tables: `Sessions`, `Cases`, `Messages`, `Evidence`, `CaseSequence`, `Settings`.
+- **Services Layer (`services/`)**:
+  - `case_service.py`: Case lifecycle engine — sequential IDs, completion scoring, state transitions, CRUD.
+  - `extraction_service.py`: Progressive data extraction from conversation content.
+  - `settings_service.py`: System settings CRUD with configurable thresholds.
+  - `auth_service.py`: Real identity resolution from headers/localStorage, email generation.
   - `rag_service.py`: Stubbed RAG pipeline (extension point for vector search).
-- **Frontend**: Vanilla JS SPA (`app.js`) with History API router, dynamic API-backed rendering.
+- **Frontend**: Vanilla JS SPA (`app.js`, `notifications.js`) with History API router, dynamic API-backed rendering, toast/modal feedback system.
 
 ---
 
-## 2. Core Capabilities Implemented
+## 2. Core Capabilities — Working
 
-### Applicant Journey
-- **Conversational Intake (Echo)**: AI-guided 6-step pathway: Greeting → Prior Learning Capture → Course Matching → Evidence Collection → Review → Submission. System prompt enforces advisor-style behavior.
-- **Auto-Draft Case**: On first message, a Draft case is automatically created with a human-readable ID (`CPL-XXXX`). Case exists from the moment conversation begins.
-- **Case Lifecycle**: `Draft → Submitted → Under Review → Info Requested → Approved → Denied`. Status transitions driven by LLM tool calls and admin actions.
-- **Evidence Upload**: Files validated (type/size), saved to disk, linked to session/case. Upload UI in intake sidebar updates live.
-- **Case History**: Applicant can view all their cases via `/api/cases`, dynamically rendered with real status, confidence scores, and creation dates.
-- **Deep-Linking**: Direct navigation to `/chat`, `/cases`, `/admin` works correctly.
-
-### Reviewer Journey
-- **Admin Dashboard**: Dynamic case queue fetched from `/api/admin/cases`. Filterable table with case ID, applicant, course, status, confidence.
-- **Case Review Detail**: Three-pane layout populated from API — Case Record (summary, course, confidence, status), Transcript (full conversation history), Evidence (attached files). All dynamically loaded when clicking a case.
-- **Decision Capture**: Approve/Deny actions update case status in DB via `/api/case/<id>/review`.
-
-### System
-- **Seed Data**: 3 realistic demo cases with full conversation histories auto-inserted on first boot.
-- **Mock Mode**: When Azure keys are unavailable, chat returns mock responses and cases use in-memory storage.
-
----
-
-## 3. Key Technical Decisions
-
-- **"Conversation is the Interface"**: Following the Product Plan, cases are created as Drafts on first message. No separate "Create Case" step.
-- **History API Router**: SPA navigation via `window.history.pushState` with deep-link support on page load.
-- **Route Separation**: `/system/config` for diagnostics, `/admin` for the Reviewer Portal. No collision.
-- **Progressive Case Building**: The LLM tool call `submit_cpl_case` transitions Draft → Submitted with structured data (target course, confidence score, summary).
-- **In-Memory Fallback**: All DB operations gracefully fall back to in-memory dicts when `pyodbc` or `SQL_CONNECTION_STRING` is unavailable.
-
----
-
-## 4. Known Constraints
-
-- **Azure Entrypoint**: `app.py` must remain the entry point. `startup.sh` must not be modified.
-- **Environment Variables** (names are deployment contracts):
-  - `SQL_CONNECTION_STRING`
-  - `AZURE_OPENAI_ENDPOINT`
-  - `AZURE_OPENAI_API_KEY`
-  - `AZURE_OPENAI_DEPLOYMENT`
-  - `AZURE_OPENAI_API_VERSION`
+| Capability | Status |
+|-----------|--------|
+| Homepage with prompt cards and composer | ✅ |
+| Deep-linking to `/chat`, `/admin`, `/cases`, `/admin/settings` | ✅ |
+| Chat → Azure OpenAI (real LLM responses) | ✅ |
+| Message persistence per session in SQL | ✅ |
+| Sequential case IDs (`CPL-2026-NNNN`) | ✅ |
+| Completion scoring model (weighted formula) | ✅ |
+| Progressive data extraction after each chat response | ✅ |
+| Draft auto-save at 30% completion | ✅ |
+| Submit gating at 80% completion | ✅ |
+| Submit for Review button (wired with confirmation modal) | ✅ |
+| Case delete (below 50% completion) | ✅ |
+| Navigate-away warning for unsaved sessions | ✅ |
+| Real applicant identity (name, student ID, email) | ✅ |
+| Case History with detail view, timeline, conversation drawer | ✅ |
+| Resume draft conversations | ✅ |
+| Admin Dashboard (dynamic from `/api/admin/cases`) | ✅ |
+| Admin Review with transcript, evidence, reviewer notes | ✅ |
+| Admin Approve/Deny/Request Revision (all wired) | ✅ |
+| Settings tab (university name, thresholds, toggles) | ✅ |
+| Evidence upload via paperclip button | ✅ |
+| Toast notifications for all actions | ✅ |
+| Modal confirmations for destructive actions | ✅ |
+| Role switcher with label (applicant ↔ reviewer) | ✅ |
+| Branding: NUPathway | ✅ |
+| Dynamic breadcrumb | ✅ |
+| System diagnostics (`/health`, `/dbcheck`) | ✅ |
 
 ---
 
-## 5. Known Limitations / Future Work
+## 3. Remaining Future Work
 
-| Item | Status | Notes |
-|------|--------|-------|
-| **Authentication** | Stubbed | `auth_service.py` returns mock user. Needs Entra ID/SSO integration. |
-| **RAG / Knowledge Base** | Scaffolded | `rag_service.py` + `knowledge/` directory ready. Needs vector store + document ingestion. |
-| **Blob Storage** | Not started | Files saved to local `/uploads/`. Must migrate to Azure Blob Storage for multi-instance scaling. |
-| **Notifications** | Not started | Email on status change not implemented. |
-| **Re-submission** | Not started | Case history linkage for resubmitted cases. |
-| **Audit Trail** | Not started | Immutable action log table. |
-| **Course Matching** | Mocked | Echo suggests courses conversationally but no real catalog search. |
+| Item | Priority |
+|------|----------|
+| Real authentication (SSO/Entra ID) | High |
+| Azure Blob Storage for evidence files | High |
+| LLM-based extraction (replace regex with OpenAI call) | Medium |
+| Reviewer assignment model | Medium |
+| Audit trail / activity log | Medium |
+| Email notifications on status change | Low |
+| Dashboard filters (by status, date, course) | Low |
+| RAG integration with course catalog | Low |
 
 ---
 
-## 6. Change Log
+## 4. Case ID Mechanism
 
-| Date | Change |
-|------|--------|
-| **2026-03-19 (PM)** | **Product-grounded MVP overhaul.** Stripped all prototype hardcoded HTML (~250 lines). Rewrote `api.py` with auto-Draft case creation, 6-step Echo system prompt, `/api/cases` applicant endpoint, seed data. Rewrote `app.js` with deep-linking, dynamic rendering for Case History, Admin Dashboard, and Admin Review panes. Fixed route collision (`/admin` → `/system/config`), DOM ID mismatch, broken deep-linking. |
-| **2026-03-19 (AM)** | Blueprint modularization, History API router, chat persistence, evidence upload, admin review API wiring. Extension points for auth and RAG. |
+| Aspect | Implementation |
+|--------|---------------|
+| Generation | `CaseSequence` IDENTITY table → `CPL-{year}-{seq:04d}` |
+| Applicant-facing | Ordered numbering ("Case 1", "Case 2") |
+| Admin-facing | Full `CPL-2026-0001` |
+| Collision risk | None (DB-backed sequence) |
+
+---
+
+## 5. Case Lifecycle States
+
+`New → Draft → In Progress → Ready for Review → Submitted → Under Review → Revision Requested → Approved / Denied`
+
+Thresholds (configurable via Settings):
+- **Draft save**: 30% completion
+- **Submit**: 80% completion
+- **Delete allowed**: Below 50% completion
+
+---
+
+## 6. Known Constraints
+
+- **Azure Entrypoint**: `app.py` must remain the entry point.
+- **Environment Variables**: `SQL_CONNECTION_STRING`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION`, `SEED_DEMO_DATA`.
+
+---
+
+## 7. Change Log
+
+| Timestamp | Change |
+|-----------|--------|
+| **2026-03-19T23:17:58-0400** | **Full 5-workstream implementation.** Rebuilt `db.py` (CaseSequence, Settings, new Case columns). Created `case_service.py` (lifecycle engine, sequential IDs, completion scoring), `extraction_service.py` (progressive data extraction), `settings_service.py` (CRUD + thresholds), `auth_service.py` (real identity). Rewrote `api.py` (thin HTTP layer, submit/delete/settings endpoints). Created `notifications.js` (toasts/modals). Rewrote `app.js` (identity persistence, completion tracking, settings tab, conversation drawer, submit gating, resume draft). Updated `index.html` (NUPathway branding, settings controls, dynamic case detail). Added CSS for toasts/modals/drawer/inputs. |
+| **2026-03-19T22:20:44-0400** | **Plan revision.** Integrated product review feedback: 5-workstream plan with completion scoring, real identity, notifications, settings, conversation drawer. |
+| **2026-03-19T21:27:02-0400** | **Live product evaluation.** Full end-to-end audit. Identified critical gaps. |
+| **2026-03-19T17:05:01-0400** | **Product-grounded MVP overhaul.** Stripped prototype HTML, rewrote api.py and app.js, fixed routing. |
+| **2026-03-19T14:30:00-0400** | Blueprint modularization, History API router, chat persistence, evidence upload. |

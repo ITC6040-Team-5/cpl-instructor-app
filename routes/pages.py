@@ -14,6 +14,8 @@ def static_files(filename):
 @pages_bp.get("/admin")
 @pages_bp.get("/admin/review")
 @pages_bp.get("/admin/review/<path:rest>")
+@pages_bp.get("/admin/settings")
 @pages_bp.get("/cases")
+@pages_bp.get("/cases/<path:rest>")
 def home():
     return render_template("index.html")
