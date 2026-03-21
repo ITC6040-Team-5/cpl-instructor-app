@@ -13,7 +13,10 @@ from openai import AzureOpenAI
 import werkzeug.utils
 
 from db import get_db_connection
-from services.auth_service import get_current_user, generate_email, validate_student_id, validate_applicant_name
+from services.auth_service import (
+    get_current_user, generate_email, validate_student_id, validate_applicant_name,
+    authenticate_admin, create_admin_session, invalidate_admin_session, require_admin,
+)
 from services.case_service import (
     ensure_session, get_case_for_session, create_case, update_case,
     transition_status, delete_case, get_case_by_id, get_cases_for_user,
@@ -524,6 +527,7 @@ def get_case(case_id):
 # ═══════════════════════════════════════════════════
 
 @api_bp.get("/admin/cases")
+@require_admin
 def get_admin_cases():
     """Returns all cases for admin dashboard."""
     cases = get_all_cases()
@@ -546,6 +550,7 @@ def get_admin_cases():
 
 
 @api_bp.post("/case/<case_id>/review")
+@require_admin
 def review_case(case_id):
     """Admin action: approve, deny, or request revision on a case."""
     data = request.get_json(silent=True) or {}
@@ -558,6 +563,21 @@ def review_case(case_id):
         "Request Revision": "Revision Requested",
     }
     new_status = status_map.get(decision, decision)
+
+    # Validate that the transition is legal
+    valid_transitions = {
+        "Submitted": ["Under Review", "Approved", "Denied", "Revision Requested"],
+        "Under Review": ["Approved", "Denied", "Revision Requested"],
+        "Revision Requested": ["Submitted", "Under Review", "Approved", "Denied"],
+        "Draft": ["Under Review", "Revision Requested"],
+        "In Progress": ["Under Review", "Revision Requested"],
+    }
+    current_case = get_case_by_id(case_id)
+    if current_case:
+        current_status = current_case.get("status", "")
+        allowed = valid_transitions.get(current_status, [])
+        if new_status not in allowed and allowed:
+            return jsonify({"error": f"Cannot transition from '{current_status}' to '{new_status}'."}), 400
 
     success = transition_status(case_id, new_status, notes=notes if notes else None)
     if not success:
@@ -580,12 +600,14 @@ def review_case(case_id):
 # ═══════════════════════════════════════════════════
 
 @api_bp.get("/admin/settings")
+@require_admin
 def get_settings_endpoint():
     """Get all system settings."""
     return jsonify(get_all_settings())
 
 
 @api_bp.post("/admin/settings")
+@require_admin
 def update_settings_endpoint():
     """Update system settings."""
     data = request.get_json(silent=True) or {}
@@ -597,6 +619,96 @@ def update_settings_endpoint():
         return jsonify({"error": "Failed to update settings"}), 500
 
     return jsonify({"status": "success", "settings": result, "message": "Settings saved."})
+
+
+# ═══════════════════════════════════════════════════
+# Admin Authentication
+# ═══════════════════════════════════════════════════
+
+@api_bp.post("/admin/login")
+def admin_login():
+    """Authenticate an admin user and return a session token."""
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+
+    success, admin_info, error = authenticate_admin(email, password)
+    if not success:
+        return jsonify({"error": error}), 401
+
+    token = create_admin_session(email)
+    if not token:
+        return jsonify({"error": "Failed to create admin session."}), 500
+
+    return jsonify({
+        "status": "success",
+        "token": token,
+        "admin": admin_info,
+        "message": f"Welcome, {admin_info['display_name']}.",
+    })
+
+
+@api_bp.post("/admin/logout")
+def admin_logout():
+    """Invalidate the current admin session."""
+    token = request.headers.get("X-Admin-Token", "").strip()
+    invalidate_admin_session(token)
+    return jsonify({"status": "success", "message": "Logged out."})
+
+
+# ═══════════════════════════════════════════════════
+# Reviewer Checks (per-case isolation)
+# ═══════════════════════════════════════════════════
+
+@api_bp.get("/case/<case_id>/checks")
+@require_admin
+def get_reviewer_checks(case_id):
+    """Get per-case reviewer checkbox states."""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"checks": {}})
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT check_key, checked FROM ReviewerChecks WHERE case_id = ?",
+            (case_id,)
+        )
+        checks = {}
+        for row in cursor.fetchall():
+            checks[row.check_key] = bool(row.checked)
+        return jsonify({"checks": checks})
+    except Exception as e:
+        logger.error(f"Failed to get reviewer checks: {e}")
+        return jsonify({"checks": {}})
+    finally:
+        conn.close()
+
+
+@api_bp.post("/case/<case_id>/checks")
+@require_admin
+def save_reviewer_checks(case_id):
+    """Save per-case reviewer checkbox states."""
+    data = request.get_json(silent=True) or {}
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable."}), 500
+    try:
+        cursor = conn.cursor()
+        for key, checked in data.items():
+            cursor.execute("""
+                MERGE ReviewerChecks AS target
+                USING (VALUES (?, ?, ?)) AS source (case_id, check_key, checked)
+                ON target.case_id = source.case_id AND target.check_key = source.check_key
+                WHEN MATCHED THEN UPDATE SET checked = source.checked, updated_at = GETDATE()
+                WHEN NOT MATCHED THEN INSERT (case_id, check_key, checked) VALUES (source.case_id, source.check_key, source.checked);
+            """, (case_id, key, 1 if checked else 0))
+        conn.commit()
+        return jsonify({"status": "success", "message": "Checks saved."})
+    except Exception as e:
+        logger.error(f"Failed to save reviewer checks: {e}")
+        return jsonify({"error": "Failed to save checks."}), 500
+    finally:
+        conn.close()
 
 
 # ═══════════════════════════════════════════════════
