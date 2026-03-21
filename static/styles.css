@@ -851,6 +851,7 @@ button:active {
     margin-bottom: 0.75rem;
     background: linear-gradient(135deg, var(--brand-primary) 0%, #4B5563 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -2125,4 +2126,165 @@ button:disabled {
 
 .progress-bar-fill.yellow {
     background: var(--status-yellow-text);
+}
+
+/* ==========================================================================
+   13. Admin Queue Table Overhaul
+   ========================================================================== */
+
+/* Sentence-case headers, refined styling */
+.data-table thead th {
+    text-transform: none;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+    user-select: none;
+}
+
+/* Sortable headers */
+.data-table thead th.sortable {
+    cursor: pointer;
+    position: relative;
+    transition: color 0.15s;
+}
+
+.data-table thead th.sortable:hover {
+    color: var(--brand-primary);
+}
+
+.data-table thead th.sortable::after {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-left: 6px;
+    vertical-align: middle;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    opacity: 0.3;
+    border-bottom: 4px solid currentColor;
+}
+
+.data-table thead th.sort-asc::after {
+    border-bottom: 4px solid currentColor;
+    border-top: none;
+    opacity: 1;
+}
+
+.data-table thead th.sort-desc::after {
+    border-top: 4px solid currentColor;
+    border-bottom: none;
+    opacity: 1;
+}
+
+/* Table row hover and spacing */
+.data-table tbody tr {
+    transition: background 0.12s;
+}
+
+.data-table tbody tr:hover {
+    background: var(--hover-bg, rgba(0,0,0,0.02));
+}
+
+.data-table tbody td {
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    vertical-align: middle;
+}
+
+/* Search input polish */
+.search-mini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+}
+
+.search-mini input {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 0.85rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-width: 200px;
+    transition: border-color 0.15s;
+}
+
+.search-mini input:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px rgba(var(--brand-primary-rgb, 59,130,246), 0.15);
+}
+
+.search-mini input::placeholder {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+/* Loading spinner */
+.loading-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--brand-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   14. Review Screen Actions Bar
+   ========================================================================== */
+.review-actions-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.btn-outline-danger {
+    background: transparent;
+    color: var(--status-red-text);
+    border: 1px solid var(--status-red-text);
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-outline-danger:hover {
+    background: var(--status-red-text);
+    color: white;
+}
+
+/* btn-link for clear-search */
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--brand-primary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.btn-link:hover {
+    opacity: 0.8;
+}
+
+/* text-xs utility */
+.text-xs {
+    font-size: 0.75rem;
 }

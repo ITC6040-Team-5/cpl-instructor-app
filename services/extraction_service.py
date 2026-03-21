@@ -77,7 +77,7 @@ def extract_case_data(messages):
             raw = raw.strip()
 
         data = json.loads(raw)
-        return {
+        extracted = {
             "target_course": data.get("target_course"),
             "applicant_name": data.get("applicant_name"),
             "student_id": data.get("student_id"),
@@ -85,12 +85,30 @@ def extract_case_data(messages):
             "confidence_score": data.get("confidence_score"),
         }
 
+        # Name normalization: trim, title-case, prefer more complete names
+        if extracted.get("applicant_name"):
+            extracted["applicant_name"] = _normalize_name(extracted["applicant_name"])
+
+        return extracted
+
     except json.JSONDecodeError as e:
         logger.warning(f"Extraction returned invalid JSON: {e}")
         return {}
     except Exception as e:
         logger.error(f"Extraction LLM call failed: {e}")
         return {}
+
+
+def _normalize_name(name):
+    """Normalize an extracted name: trim whitespace, title-case, strip artifacts."""
+    if not name:
+        return name
+    # Remove common LLM artifacts
+    cleaned = name.strip().strip('"').strip("'").strip()
+    # Title-case each word
+    parts = cleaned.split()
+    normalized = " ".join(p.capitalize() for p in parts if p)
+    return normalized if len(normalized) >= 2 else name
 
 
 def _mock_extraction(messages):
