@@ -36,6 +36,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return h;
     }
 
+    function getAdminHeaders() {
+        const h = { 'Content-Type': 'application/json' };
+        const token = sessionStorage.getItem('cpl_admin_token');
+        if (token) h['X-Admin-Token'] = token;
+        return h;
+    }
+
     // ═══════════════════════════════════════════════════
     // 1. SPA Router
     // ═══════════════════════════════════════════════════
@@ -131,6 +138,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (path === '/admin') { fetchAdminCases(); switchToReviewerNav(); }
         if (path === '/admin/settings') { loadSettingsTab(); switchToReviewerNav(); }
         if (path === '/' || path === '/chat' || path === '/cases') switchToApplicantNav();
+
+        // Toggle primary action button visibility based on mode
+        const primaryBtn = document.getElementById('primary-action-btn');
+        if (primaryBtn) {
+            primaryBtn.style.display = path.startsWith('/admin') ? 'none' : '';
+        }
     };
 
     window.addEventListener('popstate', () => navigateTo(window.location.pathname, false));
@@ -835,7 +848,12 @@ document.addEventListener('DOMContentLoaded', () => {
         </td></tr>`;
 
         try {
-            const response = await fetch('/api/admin/cases');
+            const response = await fetch('/api/admin/cases', { headers: getAdminHeaders() });
+            if (response.status === 401) {
+                showToast('Admin session expired. Please log in again.', 'warning');
+                handleAdminLogout();
+                return;
+            }
             const data = await response.json();
             _allAdminCases = data.cases || [];
             updateAdminTabs();
@@ -923,8 +941,49 @@ document.addEventListener('DOMContentLoaded', () => {
                     evidenceList.innerHTML += `<div class="file-item"><i class="${icon}"></i> ${ev.file_name} <span class="badge ${statusBadge}" style="font-size:0.6rem;">${ev.status}</span></div>`;
                 });
             }
+
+            // Load per-case reviewer checks (W3)
+            try {
+                const checksResp = await fetch(`/api/case/${caseId}/checks`, { headers: getAdminHeaders() });
+                if (checksResp.ok) {
+                    const checksData = await checksResp.json();
+                    const rubricEl = document.getElementById('check-rubric-assessed');
+                    const identityEl = document.getElementById('check-identity-verified');
+                    if (rubricEl) rubricEl.checked = !!checksData.checks?.rubric_assessed;
+                    if (identityEl) identityEl.checked = !!checksData.checks?.identity_verified;
+                }
+            } catch (ce) {
+                console.warn('Could not load reviewer checks:', ce);
+            }
+
+            // Load existing reviewer notes for this case
+            const notesInput = document.getElementById('review-notes-input');
+            if (notesInput) notesInput.value = data.reviewer_notes || '';
+
         } catch (e) {
             console.error('Failed to load case for review', e);
+        }
+    }
+
+    // Persist reviewer checks on change
+    document.getElementById('check-rubric-assessed')?.addEventListener('change', saveReviewerChecks);
+    document.getElementById('check-identity-verified')?.addEventListener('change', saveReviewerChecks);
+
+    async function saveReviewerChecks() {
+        const caseId = window.currentReviewCaseId;
+        if (!caseId) return;
+        const payload = {
+            rubric_assessed: document.getElementById('check-rubric-assessed')?.checked || false,
+            identity_verified: document.getElementById('check-identity-verified')?.checked || false,
+        };
+        try {
+            await fetch(`/api/case/${caseId}/checks`, {
+                method: 'POST',
+                headers: getAdminHeaders(),
+                body: JSON.stringify(payload),
+            });
+        } catch (e) {
+            console.warn('Failed to save reviewer checks:', e);
         }
     }
 
@@ -945,7 +1004,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`/api/case/${caseId}/review`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAdminHeaders(),
                 body: JSON.stringify({ decision, notes }),
             });
             const data = await response.json();
@@ -971,7 +1030,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════
     async function loadSettingsTab() {
         try {
-            const resp = await fetch('/api/admin/settings');
+            const resp = await fetch('/api/admin/settings', { headers: getAdminHeaders() });
+            if (resp.status === 401) { handleAdminLogout(); return; }
             const settings = await resp.json();
 
             const el = (id) => document.getElementById(id);
@@ -1006,7 +1066,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const resp = await fetch('/api/admin/settings', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAdminHeaders(),
                     body: JSON.stringify(updates),
                 });
                 const data = await resp.json();
@@ -1023,7 +1083,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ═══════════════════════════════════════════════════
-    // 7. Role Switcher
+    // 7. Role Switcher + Admin Authentication
     // ═══════════════════════════════════════════════════
     const roleSwitchBtn = document.getElementById('role-switch-btn');
     const applicantNavWrapper = document.getElementById('applicant-nav-wrapper');
@@ -1062,10 +1122,127 @@ document.addEventListener('DOMContentLoaded', () => {
         if (profileRole) profileRole.innerText = 'Applicant';
     }
 
+    // Admin login modal logic
+    function showAdminLoginModal() {
+        const modal = document.getElementById('admin-login-modal');
+        if (!modal) return;
+        modal.style.display = 'flex';
+        const emailEl = document.getElementById('admin-login-email');
+        if (emailEl) { emailEl.value = ''; emailEl.focus(); }
+        const pwEl = document.getElementById('admin-login-password');
+        if (pwEl) pwEl.value = '';
+        const errEl = document.getElementById('admin-login-error');
+        if (errEl) errEl.style.display = 'none';
+    }
+
+    function hideAdminLoginModal() {
+        const modal = document.getElementById('admin-login-modal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    async function attemptAdminLogin() {
+        const email = document.getElementById('admin-login-email')?.value?.trim() || '';
+        const password = document.getElementById('admin-login-password')?.value || '';
+        const errEl = document.getElementById('admin-login-error');
+
+        if (!email || !password) {
+            if (errEl) { errEl.textContent = 'Please enter both email and password.'; errEl.style.display = 'block'; }
+            return;
+        }
+
+        try {
+            const resp = await fetch('/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
+            });
+            const data = await resp.json();
+            if (resp.ok && data.token) {
+                sessionStorage.setItem('cpl_admin_token', data.token);
+                hideAdminLoginModal();
+                showToast(data.message || 'Signed in as reviewer.', 'success');
+                navigateTo('/admin');
+            } else {
+                if (errEl) { errEl.textContent = data.error || 'Invalid credentials.'; errEl.style.display = 'block'; }
+            }
+        } catch (e) {
+            if (errEl) { errEl.textContent = 'Login failed. Please try again.'; errEl.style.display = 'block'; }
+        }
+    }
+
+    function handleAdminLogout() {
+        const token = sessionStorage.getItem('cpl_admin_token');
+        if (token) {
+            fetch('/api/admin/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
+            }).catch(() => {});
+        }
+        sessionStorage.removeItem('cpl_admin_token');
+        navigateTo('/');
+    }
+
+    // Wire login modal buttons
+    document.getElementById('admin-login-submit')?.addEventListener('click', attemptAdminLogin);
+    document.getElementById('admin-login-cancel')?.addEventListener('click', hideAdminLoginModal);
+    document.getElementById('admin-login-close')?.addEventListener('click', hideAdminLoginModal);
+    document.getElementById('admin-login-password')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') attemptAdminLogin();
+    });
+
     if (roleSwitchBtn) {
         roleSwitchBtn.addEventListener('click', () => {
-            if (isReviewer) navigateTo('/');
-            else navigateTo('/admin');
+            if (isReviewer) {
+                handleAdminLogout();
+            } else {
+                // Show login modal instead of direct toggle
+                showAdminLoginModal();
+            }
+        });
+    }
+
+    // On page load, check if admin token exists for admin routes
+    if (window.location.pathname.startsWith('/admin')) {
+        const token = sessionStorage.getItem('cpl_admin_token');
+        if (!token) {
+            // Redirect to home if no admin token
+            navigateTo('/', false);
+        }
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // 7b. Escalation Drawer (W4)
+    // ═══════════════════════════════════════════════════
+    const escalateBtn = document.getElementById('admin-escalate-btn');
+    const escalationDrawer = document.getElementById('escalation-drawer');
+    const escalationCloseBtn = document.getElementById('escalation-drawer-close');
+    const escalationPrepareBtn = document.getElementById('escalation-prepare-btn');
+
+    function openEscalationDrawer() {
+        const caseId = window.currentReviewCaseId;
+        if (!caseId) { showToast('No case selected.', 'warning'); return; }
+        const caseRef = document.getElementById('escalation-case-ref');
+        const applicantEl = document.getElementById('escalation-applicant');
+        if (caseRef) caseRef.textContent = caseId;
+        if (applicantEl) {
+            applicantEl.textContent = document.getElementById('review-applicant-name')?.textContent || '—';
+        }
+        if (escalationDrawer) {
+            requestAnimationFrame(() => escalationDrawer.classList.add('drawer-visible'));
+        }
+    }
+
+    function closeEscalationDrawer() {
+        if (escalationDrawer) escalationDrawer.classList.remove('drawer-visible');
+    }
+
+    if (escalateBtn) escalateBtn.addEventListener('click', openEscalationDrawer);
+    if (escalationCloseBtn) escalationCloseBtn.addEventListener('click', closeEscalationDrawer);
+    if (escalationPrepareBtn) {
+        escalationPrepareBtn.addEventListener('click', () => {
+            showToast('Escalation prepared (email integration pending).', 'info');
+            closeEscalationDrawer();
         });
     }
 
@@ -1190,7 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/\n/g, '<br>');
     }
 
-    function formatTimestamp(ts) {
+    function formatTimestampShort(ts) {
         try {
             const d = new Date(ts);
             return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -1228,9 +1405,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const query = globalSearchInput.value.trim();
             if (!query) return;
 
+            // Only search if user has admin token
+            const adminToken = sessionStorage.getItem('cpl_admin_token');
+            if (!adminToken) {
+                showToast('Please sign in as reviewer to search cases.', 'warning');
+                return;
+            }
+
             try {
-                // Try searching admin cases first (case_id or student_id)
-                const resp = await fetch('/api/admin/cases');
+                const resp = await fetch('/api/admin/cases', { headers: getAdminHeaders() });
                 const data = await resp.json();
                 const match = (data.cases || []).find(c =>
                     c.case_id === query ||
