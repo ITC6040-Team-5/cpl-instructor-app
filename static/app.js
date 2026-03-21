@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
         '/': 'Applicant View / Home',
         '/chat': 'Applicant View / New Evaluation',
         '/cases': 'Applicant View / Case History',
-        '/admin': 'Reviewer Portal / Dashboard Queue',
+        '/admin': 'Reviewer Portal / Case Queue',
         '/admin/review': 'Reviewer Portal / Case Review',
         '/admin/settings': 'Reviewer Portal / Settings',
     };
@@ -103,12 +103,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Nav highlighting
-        if (targetId !== 'admin-review-screen') {
-            const activeNav = document.querySelector(`.nav-item[data-target="${targetId}"]`);
-            if (activeNav) {
-                navItems.forEach(nav => nav.classList.remove('active'));
-                activeNav.classList.add('active');
-            }
+        // Map sub-views to their parent nav item
+        const navTargetMap = {
+            'admin-review-screen': 'admin-dashboard-screen',
+        };
+        const highlightTarget = navTargetMap[targetId] || targetId;
+        const activeNav = document.querySelector(`.nav-item[data-target="${highlightTarget}"]`);
+        if (activeNav) {
+            navItems.forEach(nav => nav.classList.remove('active'));
+            activeNav.classList.add('active');
         }
 
         // Show/hide screens
@@ -325,6 +328,40 @@ document.addEventListener('DOMContentLoaded', () => {
     function initiateChatFromLanding(promptText) {
         if (!promptText.trim()) return;
 
+        // Fix 6: Check if user has existing draft to resume
+        const resumeKeywords = ['resume', 'continue', 'draft', 'my draft', 'existing'];
+        const isResumeAttempt = resumeKeywords.some(k => promptText.toLowerCase().includes(k));
+
+        if (isResumeAttempt && studentId) {
+            // Try to find existing draft and navigate to it
+            fetch('/api/cases', { headers: getIdentityHeaders() })
+                .then(r => r.json())
+                .then(data => {
+                    const draft = (data.cases || []).find(c => ['Draft', 'In Progress', 'New'].includes(c.status));
+                    if (draft && draft.session_id) {
+                        sessionId = draft.session_id;
+                        localStorage.setItem('cpl_session_id', sessionId);
+                        currentCaseId = draft.case_id;
+                        currentCompletionPct = draft.completion_pct || 0;
+                        chatHasUnsavedContent = false;
+                        if (chatTranscript) chatTranscript.innerHTML = '';
+                        navigateTo('/chat');
+                        showToast('Resuming your existing draft.', 'info');
+                        // Load existing messages
+                        appendUserMessage(promptText);
+                    } else {
+                        // No draft found, start fresh
+                        _startFreshChat(promptText);
+                    }
+                })
+                .catch(() => _startFreshChat(promptText));
+            return;
+        }
+
+        _startFreshChat(promptText);
+    }
+
+    function _startFreshChat(promptText) {
         // Fresh session
         sessionId = 'session_' + crypto.randomUUID().slice(0, 12);
         localStorage.setItem('cpl_session_id', sessionId);
@@ -657,56 +694,187 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════
     // 5. Admin Dashboard
     // ═══════════════════════════════════════════════════
-    async function fetchAdminCases() {
-        const tbody = document.querySelector('#admin-dashboard-screen .data-table tbody');
+    let _allAdminCases = []; // cache for client-side filtering
+    let _adminSortKey = 'updated_at';
+    let _adminSortAsc = false;
+    let _adminFilter = 'all';
+
+    function formatTimestamp(ts) {
+        if (!ts) return '—';
+        try {
+            const d = new Date(ts);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                 + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        } catch { return ts; }
+    }
+
+    function getFilteredCases() {
+        let cases = [..._allAdminCases];
+        // Tab filter
+        if (_adminFilter === 'needs-review') {
+            cases = cases.filter(c => ['Submitted', 'Under Review'].includes(c.status));
+        } else if (_adminFilter === 'in-progress') {
+            cases = cases.filter(c => ['Draft', 'In Progress'].includes(c.status));
+        } else if (_adminFilter === 'completed') {
+            cases = cases.filter(c => ['Approved', 'Denied'].includes(c.status));
+        }
+        // Search filter
+        const searchInput = document.getElementById('admin-search-input');
+        const query = (searchInput?.value || '').toLowerCase().trim();
+        if (query) {
+            cases = cases.filter(c =>
+                (c.case_id || '').toLowerCase().includes(query) ||
+                (c.applicant || '').toLowerCase().includes(query) ||
+                (c.student_id || '').toLowerCase().includes(query)
+            );
+        }
+        // Sort
+        cases.sort((a, b) => {
+            let va = a[_adminSortKey] || '', vb = b[_adminSortKey] || '';
+            if (typeof va === 'number' && typeof vb === 'number') {
+                return _adminSortAsc ? va - vb : vb - va;
+            }
+            va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+            return _adminSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+        });
+        return cases;
+    }
+
+    function updateAdminTabs() {
+        const tabs = document.getElementById('admin-queue-tabs');
+        if (!tabs) return;
+        const all = _allAdminCases.length;
+        const needsReview = _allAdminCases.filter(c => ['Submitted', 'Under Review'].includes(c.status)).length;
+        const inProgress = _allAdminCases.filter(c => ['Draft', 'In Progress'].includes(c.status)).length;
+        const completed = _allAdminCases.filter(c => ['Approved', 'Denied'].includes(c.status)).length;
+        const tabEls = tabs.querySelectorAll('.tab');
+        if (tabEls[0]) tabEls[0].textContent = `All Cases (${all})`;
+        if (tabEls[1]) tabEls[1].textContent = `Needs Review (${needsReview})`;
+        if (tabEls[2]) tabEls[2].textContent = `In Progress (${inProgress})`;
+        if (tabEls[3]) tabEls[3].textContent = `Completed (${completed})`;
+
+        // Update sidebar badge
+        const badge = document.getElementById('queue-count-badge');
+        if (badge) badge.textContent = needsReview || all;
+    }
+
+    function renderAdminTable() {
+        const tbody = document.querySelector('#admin-cases-table tbody');
         if (!tbody) return;
+        const cases = getFilteredCases();
+        tbody.innerHTML = '';
+
+        if (_allAdminCases.length === 0) {
+            // Empty state: no cases at all
+            tbody.innerHTML = `<tr><td colspan="7" class="admin-empty-state">
+                <div style="text-align:center; padding: 48px 24px;">
+                    <i class="ph ph-clipboard-text" style="font-size: 2.5rem; color: var(--text-muted); opacity: 0.5;"></i>
+                    <p style="margin-top: 12px; color: var(--text-muted);">No cases have been submitted yet.</p>
+                </div>
+            </td></tr>`;
+            return;
+        }
+
+        if (cases.length === 0) {
+            // No-results state: search/filter returned nothing
+            tbody.innerHTML = `<tr><td colspan="7" class="admin-empty-state">
+                <div style="text-align:center; padding: 36px 24px;">
+                    <i class="ph ph-magnifying-glass" style="font-size: 2rem; color: var(--text-muted); opacity: 0.5;"></i>
+                    <p style="margin-top: 8px; color: var(--text-muted);">No matching cases found.</p>
+                    <button class="btn-link" onclick="document.getElementById('admin-search-input').value=''; renderAdminTable();" style="margin-top: 4px;">Clear search</button>
+                </div>
+            </td></tr>`;
+            return;
+        }
+
+        cases.forEach(c => {
+            const badgeClass = getBadgeClass(c.status);
+            const initials = (c.applicant || 'UN').substring(0, 2).toUpperCase();
+            const pct = c.completion_pct || 0;
+            const tr = document.createElement('tr');
+            tr.className = 'clickable-row';
+            tr.addEventListener('click', () => openAdminReview(c.case_id));
+            tr.innerHTML = `
+                <td class="font-mono text-sm">${c.case_id}</td>
+                <td>
+                    <div class="flex-align-center gap-2">
+                        <div class="avatar-small img">${initials}</div>
+                        <div>
+                            <strong>${c.applicant || 'Unknown'}</strong>
+                            ${c.student_id ? `<span class="text-xs text-muted" style="display:block">${c.student_id}</span>` : ''}
+                        </div>
+                    </div>
+                </td>
+                <td>${c.target_course || '—'}</td>
+                <td><span class="badge ${badgeClass}">${c.status}</span></td>
+                <td>
+                    <div class="flex-align-center gap-2 text-sm">
+                        <div class="progress-bar-bg small">
+                            <div class="progress-bar-fill ${pct >= 80 ? 'green' : pct >= 50 ? 'yellow' : ''}" style="width: ${pct}%;"></div>
+                        </div>
+                        ${pct}%
+                    </div>
+                </td>
+                <td class="text-sm text-muted">${formatTimestamp(c.updated_at)}</td>
+                <td><button class="btn-icon"><i class="ph ph-caret-right"></i></button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function fetchAdminCases() {
+        const tbody = document.querySelector('#admin-cases-table tbody');
+        if (!tbody) return;
+
+        // Loading state
+        tbody.innerHTML = `<tr><td colspan="7" class="admin-loading-state">
+            <div style="text-align:center; padding: 36px 24px;">
+                <div class="loading-spinner"></div>
+                <p style="margin-top: 12px; color: var(--text-muted);">Loading cases...</p>
+            </div>
+        </td></tr>`;
 
         try {
             const response = await fetch('/api/admin/cases');
             const data = await response.json();
-            tbody.innerHTML = '';
-
-            if (!data.cases || data.cases.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted p-4">No cases in the queue.</td></tr>';
-                return;
-            }
-
-            data.cases.forEach(c => {
-                const badgeClass = getBadgeClass(c.status);
-                const initials = (c.applicant || 'UN').substring(0, 2).toUpperCase();
-                const tr = document.createElement('tr');
-                tr.className = 'clickable-row';
-                tr.addEventListener('click', () => openAdminReview(c.case_id));
-                tr.innerHTML = `
-                    <td class="font-mono text-sm">${c.case_id}</td>
-                    <td>
-                        <div class="flex-align-center gap-2">
-                            <div class="avatar-small img">${initials}</div>
-                            <strong>${c.applicant || 'Unknown'}</strong>
-                        </div>
-                    </td>
-                    <td>${c.target_course || '—'}</td>
-                    <td><span class="badge ${badgeClass}">${c.status}</span></td>
-                    <td>
-                        <div class="flex-align-center gap-2 text-sm">
-                            <div class="progress-bar-bg small">
-                                <div class="progress-bar-fill ${(c.confidence_score || 0) >= 70 ? 'green' : 'yellow'}" style="width: ${c.confidence_score || 0}%;"></div>
-                            </div>
-                            ${c.confidence_score || '—'}
-                        </div>
-                    </td>
-                    <td>${c.assignee || '—'}</td>
-                    <td><button class="btn-icon"><i class="ph ph-caret-right"></i></button></td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            const tab = document.querySelector('#admin-dashboard-screen .tab.active');
-            if (tab) tab.innerText = `All Cases (${data.cases.length})`;
+            _allAdminCases = data.cases || [];
+            updateAdminTabs();
+            renderAdminTable();
         } catch (e) {
             console.error('Failed to fetch admin cases', e);
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted p-4">Failed to load cases.</td></tr>`;
         }
     }
+
+    // Tab click handler
+    document.getElementById('admin-queue-tabs')?.addEventListener('click', (e) => {
+        const tab = e.target.closest('.tab');
+        if (!tab) return;
+        document.querySelectorAll('#admin-queue-tabs .tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        _adminFilter = tab.dataset.filter || 'all';
+        renderAdminTable();
+    });
+
+    // Search handler
+    document.getElementById('admin-search-input')?.addEventListener('input', () => renderAdminTable());
+
+    // Sort handler
+    document.querySelectorAll('#admin-cases-table th.sortable')?.forEach(th => {
+        th.addEventListener('click', () => {
+            const key = th.dataset.sort;
+            if (_adminSortKey === key) {
+                _adminSortAsc = !_adminSortAsc;
+            } else {
+                _adminSortKey = key;
+                _adminSortAsc = true;
+            }
+            // Update sort indicators
+            document.querySelectorAll('#admin-cases-table th.sortable').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+            th.classList.add(_adminSortAsc ? 'sort-asc' : 'sort-desc');
+            renderAdminTable();
+        });
+    });
 
     async function openAdminReview(caseId) {
         window.currentReviewCaseId = caseId;
@@ -1050,10 +1218,102 @@ document.addEventListener('DOMContentLoaded', () => {
         return icons[ext] || 'ph-fill ph-file';
     }
 
+    // ═══════════════════════════════════════════════════
+    // 11. Global Search Bar (Fix 9)
+    // ═══════════════════════════════════════════════════
+    const globalSearchInput = document.getElementById('global-search-input');
+    if (globalSearchInput) {
+        globalSearchInput.addEventListener('keypress', async (e) => {
+            if (e.key !== 'Enter') return;
+            const query = globalSearchInput.value.trim();
+            if (!query) return;
+
+            try {
+                // Try searching admin cases first (case_id or student_id)
+                const resp = await fetch('/api/admin/cases');
+                const data = await resp.json();
+                const match = (data.cases || []).find(c =>
+                    c.case_id === query ||
+                    (c.student_id || '').toLowerCase() === query.toLowerCase() ||
+                    (c.applicant || '').toLowerCase().includes(query.toLowerCase())
+                );
+                if (match) {
+                    openAdminReview(match.case_id);
+                    globalSearchInput.value = '';
+                    showToast(`Found case ${match.case_id}`, 'info');
+                } else {
+                    showToast('No matching case found.', 'warning');
+                }
+            } catch (err) {
+                console.error('Global search failed', err);
+                showToast('Search failed.', 'error');
+            }
+        });
+    }
 
     // ═══════════════════════════════════════════════════
-    // 11. Boot
+    // 12. Session Recovery on Refresh (Fix 10)
+    // ═══════════════════════════════════════════════════
+    async function attemptSessionRecovery() {
+        const savedSession = localStorage.getItem('cpl_session_id');
+        const savedStudentId = localStorage.getItem('cpl_student_id');
+        const currentPath = window.location.pathname;
+
+        // Only recover on chat page
+        if (currentPath !== '/chat' || !savedSession) return;
+
+        try {
+            // Check if we have an existing case for this session
+            const resp = await fetch(`/api/session/${savedSession}/messages`);
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.messages && data.messages.length > 0) {
+                    sessionId = savedSession;
+                    // Reload messages into transcript
+                    if (chatTranscript) {
+                        chatTranscript.innerHTML = '';
+                        data.messages.forEach(msg => {
+                            const div = document.createElement('div');
+                            div.className = `message ${msg.role}`;
+                            const isAI = msg.role === 'assistant';
+                            div.innerHTML = `
+                                <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<i class="ph-fill ph-sparkle text-white"></i>' : (applicantName || 'ME').substring(0, 2).toUpperCase()}</div>
+                                <div class="message-content"><p>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</p></div>
+                            `;
+                            chatTranscript.appendChild(div);
+                        });
+                        chatTranscript.scrollTop = chatTranscript.scrollHeight;
+                    }
+
+                    // Try to restore case data
+                    if (savedStudentId) {
+                        const casesResp = await fetch('/api/cases', { headers: getIdentityHeaders() });
+                        if (casesResp.ok) {
+                            const casesData = await casesResp.json();
+                            const activeCase = (casesData.cases || []).find(c =>
+                                c.session_id === savedSession || ['Draft', 'In Progress'].includes(c.status)
+                            );
+                            if (activeCase) {
+                                currentCaseId = activeCase.case_id;
+                                currentCompletionPct = activeCase.completion_pct || 0;
+                                updateIntakeSidebar(activeCase);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('Session recovery failed (non-fatal):', err);
+        }
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // 13. Boot
     // ═══════════════════════════════════════════════════
     updateProfileDisplay();
     navigateTo(window.location.pathname, false);
+
+    // Attempt session recovery after initial navigation
+    attemptSessionRecovery();
 });

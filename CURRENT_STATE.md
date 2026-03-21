@@ -105,8 +105,47 @@ Thresholds (configurable via Settings):
 
 | Timestamp | Change |
 |-----------|--------|
+| **2026-03-20T01:10:41-0400** | **Phase 2 implementation complete.** Implemented 14 of 17 fixes across 6 files. P0: rebalanced completion scoring (6 criteria, 85% without course, was 75%), retroactive `user_id` update after extraction, dual `user_id`/`student_id` query for case retrieval. P1: admin naming normalized to "Case Queue", queue table fully rewritten (dynamic tabs, client-side search/sort/filter, Date Updated column, loading/empty/no-results states), sidebar active-state fix (review→queue mapping), case detail actions moved above timeline, review screen action bar with clear button hierarchy, role switcher always visible, resume draft keyword detection. P2: name normalization in extraction service. Deferred: prompt tuning, search bar, session recovery. |
+| **2026-03-20T01:08:25-0400** | **Additional UI refinements.** Added Fixes 15–17 to Phase 2 plan: queue table empty/loading/no-results states, reviewer action button prominence (sticky, clear hierarchy), and applicant case detail action buttons reorder (moved above timeline for visibility). |
+| **2026-03-20T01:03:18-0400** | **Reviewer/admin UI plan refinements.** Added Fixes 11–14 to Phase 2 implementation plan: admin naming normalization → "Case Queue", queue table UI overhaul (dynamic tabs, timestamps, sentence-case headers, client-side sort), case review screen polish, sidebar active-state fix. Based on validated product feedback from manual testing. |
+| **2026-03-20T00:40:57-0400** | **Live evaluation + Alex Watson investigation.** Full end-to-end live product testing on Azure. Root causes identified: (1) case-user linkage broken — `user_id` stays `"anonymous"` after identity extraction, making `GET /api/cases` return empty; (2) completion scoring caps at 75% when no course extracted and only 1 evidence file; (3) prompt cards create duplicate cases (no dedup); (4) name parsing inconsistent across sessions; (5) role switcher visually hidden. Updated `implementation_plan.md` with Phase 2 (10 fixes: P0=user_id retroactive update + scoring rebalance + identity-based retrieval; P1=dedup + role switcher + resume draft; P2=name normalization + echo tuning + search bar + session recovery). Created `live_evaluation_report.md`. |
 | **2026-03-19T23:17:58-0400** | **Full 5-workstream implementation.** Rebuilt `db.py` (CaseSequence, Settings, new Case columns). Created `case_service.py` (lifecycle engine, sequential IDs, completion scoring), `extraction_service.py` (progressive data extraction), `settings_service.py` (CRUD + thresholds), `auth_service.py` (real identity). Rewrote `api.py` (thin HTTP layer, submit/delete/settings endpoints). Created `notifications.js` (toasts/modals). Rewrote `app.js` (identity persistence, completion tracking, settings tab, conversation drawer, submit gating, resume draft). Updated `index.html` (NUPathway branding, settings controls, dynamic case detail). Added CSS for toasts/modals/drawer/inputs. |
 | **2026-03-19T22:20:44-0400** | **Plan revision.** Integrated product review feedback: 5-workstream plan with completion scoring, real identity, notifications, settings, conversation drawer. |
 | **2026-03-19T21:27:02-0400** | **Live product evaluation.** Full end-to-end audit. Identified critical gaps. |
 | **2026-03-19T17:05:01-0400** | **Product-grounded MVP overhaul.** Stripped prototype HTML, rewrote api.py and app.js, fixed routing. |
 | **2026-03-19T14:30:00-0400** | Blueprint modularization, History API router, chat persistence, evidence upload. |
+
+---
+
+## 8. Phase 2: Live Evaluation Findings (2026-03-20)
+
+> Added after live testing on Azure deployment. See [live_evaluation_report.md](file:///Users/paresh/.gemini/antigravity/brain/05be1110-7864-402d-8add-aa40610f27c6/live_evaluation_report.md) for full investigation.
+
+### Critical Gaps Discovered
+
+| Issue | Root Cause | Impact | Priority |
+|-------|-----------|--------|----------|
+| Case history empty for applicant | Cases created with `user_id = "anonymous"`, never updated after identity extraction | Applicant cannot see their own cases | P0 |
+| Completion stalls at 75% | Scoring formula requires course extraction (20%) + 2 evidence files (20%) for full credit | Submit button permanently disabled | P0 |
+| No case retrieval by identity | `GET /api/cases` queries only by `user_id`, not `student_id` | Returning users can't find prior cases | P0 |
+| Duplicate cases per user | No dedup — each prompt card/new session creates a fresh case | Fragmented user data | P1 |
+| Role switcher invisible | CSS opacity on sidebar footer | Admin flow inaccessible without debug tools | P1 |
+| "Resume my draft" broken | Creates new session instead of finding existing draft | Misleading UX | P1 |
+| Name parsing inconsistent | LLM extracts whatever text was said, no normalization | "Alex" vs "Alex Watson" on admin | P2 |
+
+### Alex Watson Case (specific scenario investigation)
+
+- Progress capped at exactly 75%: name (20%) + messages≥6 (20%) + 1 evidence (15%) + summary (20%) = 75%. Missing: course (0%) + needs 2nd evidence file for full 20%.
+- Case visible on admin side but invisible to applicant due to `user_id` mismatch.
+- Refresh did not break session (localStorage persists), but case history query failed due to `user_id` not being updated after extraction.
+
+### Reviewer/Admin UI Refinements (2026-03-20T01:03)
+
+Added to implementation plan as Fixes 11–14 based on validated product feedback:
+
+| Fix | Description |
+|-----|-------------|
+| Fix 11 | Normalize admin naming → "Case Queue" across sidebar, heading, breadcrumb |
+| Fix 12 | Queue table UI overhaul: dynamic tab counts, sentence-case headers, date/timestamp column, search refinement, client-side sort |
+| Fix 13 | Case review screen polish: consistent typography, card layout, button hierarchy |
+| Fix 14 | Sidebar active-state fix: correct highlight behavior across admin sub-views |

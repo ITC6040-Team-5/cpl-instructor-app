@@ -44,29 +44,35 @@ def _next_case_id_mem():
 
 def compute_completion(case_data, message_count=0, evidence_count=0):
     """
-    Compute case completion percentage (0–100) based on 5 criteria, 20% each:
-      1. Identity provided (name + student ID)
-      2. Intent clarity (target course identified)
-      3. Prior learning described (messages ≥ 4)
-      4. Evidence attached (≥ 1 file)
-      5. Completeness of responses (derived from message depth)
+    Compute case completion percentage (0–100) based on 6 criteria:
+      1. Name provided (15%)
+      2. Student ID provided (10%)
+      3. Target course / area identified (15%)
+      4. Prior learning described — message depth (20%)
+      5. Evidence attached (15%)
+      6. Summary / conversational completeness (25%)
+
+    Realistic case with name + ID + messages + 1 file + summary = 85%
+    Adding course identification brings it to 100%.
     """
     pct = 0
 
-    # 1. Identity (20%)
+    # 1. Name provided (15%)
     name = case_data.get("applicant_name")
+    if name and len(name.strip()) >= 2:
+        pct += 15
+
+    # 2. Student ID provided (10%)
     sid = case_data.get("student_id")
-    if name and sid:
-        pct += 20
-    elif name or sid:
+    if sid:
         pct += 10
 
-    # 2. Intent clarity (20%)
+    # 3. Target course / area (15%)
     course = case_data.get("target_course")
     if course and course not in ("Not yet determined", "—", None, ""):
-        pct += 20
+        pct += 15
 
-    # 3. Prior learning described (20%)
+    # 4. Prior learning described (20%)
     if message_count >= 6:
         pct += 20
     elif message_count >= 4:
@@ -74,18 +80,16 @@ def compute_completion(case_data, message_count=0, evidence_count=0):
     elif message_count >= 2:
         pct += 10
 
-    # 4. Evidence attached (20%)
-    if evidence_count >= 2:
-        pct += 20
-    elif evidence_count >= 1:
+    # 5. Evidence attached (15%)
+    if evidence_count >= 1:
         pct += 15
 
-    # 5. Conversational completeness (20%)
+    # 6. Summary / conversational completeness (25%)
     summary = case_data.get("summary")
     if summary and len(summary) > 100:
-        pct += 20
+        pct += 25
     elif summary and len(summary) > 30:
-        pct += 10
+        pct += 15
     elif message_count >= 8:
         pct += 10
 
@@ -242,7 +246,7 @@ def update_case(case_id, updates):
     try:
         cursor = conn.cursor()
         allowed = {
-            "applicant_name", "student_id", "applicant_email",
+            "user_id", "applicant_name", "student_id", "applicant_email",
             "target_course", "status", "completion_pct",
             "confidence_score", "summary", "reviewer_notes",
         }
@@ -417,22 +421,34 @@ def get_case_by_id(case_id):
         conn.close()
 
 
-def get_cases_for_user(user_id):
-    """Get all cases for an applicant."""
+def get_cases_for_user(user_id, student_id=None):
+    """Get all cases for an applicant. Queries by user_id OR student_id
+    to handle cases created before identity was linked."""
     conn = get_db_connection()
     if not conn:
         return [c for c in _mem_cases.values() if c.get("status") != "New"]
 
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT case_id, case_seq, session_id, user_id, applicant_name, student_id,
-                   applicant_email, target_course, status, completion_pct, confidence_score,
-                   summary, reviewer_notes, created_at, updated_at
-            FROM Cases
-            WHERE user_id = ? AND status != 'New'
-            ORDER BY created_at DESC
-        """, (user_id,))
+        if student_id and student_id != "anonymous":
+            # Query by both user_id and student_id to catch orphaned cases
+            cursor.execute("""
+                SELECT case_id, case_seq, session_id, user_id, applicant_name, student_id,
+                       applicant_email, target_course, status, completion_pct, confidence_score,
+                       summary, reviewer_notes, created_at, updated_at
+                FROM Cases
+                WHERE (user_id = ? OR student_id = ?) AND status != 'New'
+                ORDER BY created_at DESC
+            """, (user_id, student_id))
+        else:
+            cursor.execute("""
+                SELECT case_id, case_seq, session_id, user_id, applicant_name, student_id,
+                       applicant_email, target_course, status, completion_pct, confidence_score,
+                       summary, reviewer_notes, created_at, updated_at
+                FROM Cases
+                WHERE user_id = ? AND status != 'New'
+                ORDER BY created_at DESC
+            """, (user_id,))
         return [_row_to_case(r) for r in cursor.fetchall()]
     except Exception as e:
         logger.error(f"get_cases_for_user failed: {e}")
