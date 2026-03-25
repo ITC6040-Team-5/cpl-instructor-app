@@ -378,6 +378,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fresh session
         sessionId = 'session_' + crypto.randomUUID().slice(0, 12);
         localStorage.setItem('cpl_session_id', sessionId);
+        
+        // Fix for identity bleed: Treat as completely fresh unless restoring session
+        localStorage.removeItem('cpl_applicant_name');
+        localStorage.removeItem('cpl_student_id');
+        applicantName = '';
+        studentId = '';
+
         currentCaseId = null;
         currentCompletionPct = 0;
         chatHasUnsavedContent = false;
@@ -1151,10 +1158,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
+            // Hash password with SHA-256 before sending (frontend-side securing)
+            const msgBuffer = new TextEncoder().encode(password);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashedPassword = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
             const resp = await fetch('/api/admin/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({ email, password: hashedPassword }),
             });
             const data = await resp.json();
             if (resp.ok && data.token) {
