@@ -224,7 +224,9 @@ def _seed_admin_user(cursor):
     try:
         cursor.execute("SELECT 1 FROM AdminUsers WHERE email = ?", (email,))
         if not cursor.fetchone():
-            pw_hash = generate_password_hash('100@QWERTY')
+            import hashlib
+            hashed_default = hashlib.sha256(b'100@QWERTY').hexdigest()
+            pw_hash = generate_password_hash(hashed_default)
             cursor.execute(
                 "INSERT INTO AdminUsers (email, password_hash, display_name) VALUES (?, ?, ?)",
                 (email, pw_hash, 'Admin Reviewer')

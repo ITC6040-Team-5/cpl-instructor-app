@@ -4,9 +4,16 @@ This document is the primary, single source of truth for the NUPathway system ar
 
 ---
 
+## Future Implementation approaches:
+Overall approach to act as precise, surgical extensions to the existing codebase rather than rewrites (unless deemed critial use-case or scenario).
+
+---
+
 ## 1. Current Architecture
 
 Flask SPA with modular blueprints, service layer, Azure SQL persistence, and Azure OpenAI conversational AI.
+
+Azure deployment URL: https://cpl-team5-app-gjdpfpebfxcnf5cp.eastus-01.azurewebsites.net
 
 - **Entrypoint (`app.py`)**: Creates Flask app, initializes DB schema, registers blueprints, seeds demo data.
 - **Route Blueprints (`routes/`)**:
@@ -22,7 +29,8 @@ Flask SPA with modular blueprints, service layer, Azure SQL persistence, and Azu
   - `rag_service.py`: Stubbed RAG pipeline (extension point for vector search).
 - **Frontend**: Vanilla JS SPA (`app.js`, `notifications.js`) with History API router, dynamic API-backed rendering, toast/modal feedback system.
 
----
+
+
 
 ## 2. Core Capabilities — Working
 
@@ -105,6 +113,7 @@ Thresholds (configurable via Settings):
 
 | Timestamp | Change |
 |-----------|--------|
+| **2026-03-23T16:15:00-0400** | **Phase 4 surgical bug fixes.** Fixed identity bleed (Alex Watson) by clearing `localStorage` on fresh chat. Stopped artificial 35% completion jumps by gating message score behind identity presence. Added lightweight course lookup "RAG" via `rag_service.py` reading `/knowledge/catalog.json` avoiding vector overhead. Secured admin login by SHA-256 hashing on the frontend and reseeding the DB appropriately. Tuned Echo prompt to be concise and avoid overclaiming. Maintained strict architectural preservation across all layers. |
 | **2026-03-20T23:50:00-0400** | **Phase 3 holistic upgrade implementation complete.** 8 workstreams across 6 files. W1: backend-enforced admin auth (`AdminUsers`/`AdminSessions` tables, `authenticate_admin`, `@require_admin` on 6 endpoints, login/logout API, login modal). W2: mode separation (role switch requires login, "New Case" hidden in reviewer mode, dead "Case Review" nav removed, `getAdminHeaders()` isolates admin from applicant identity). W3: per-case reviewer data isolation (`ReviewerChecks` table, GET/POST `/api/case/<id>/checks`, auto-save on toggle). W4: escalation scaffold (drawer with case ref, email, notes, prepare action). W5: UI uplift (badge `white-space: nowrap`, breadcrumb contrast, avatar `min-size`+`flex-shrink`, review column `align-self: stretch`, vertical checkboxes). W6: state cleanup (admin token in `sessionStorage`, `formatTimestamp` dedup, 401 auto-logout, global search guards). W7: Echo avatar sizing fix. W8: status transition validation map in `review_case()`, primary action toggle by mode. All structural verifications passed (20/20 checks). |
 | **2026-03-20T23:21:58-0400** | **Phase 3 holistic upgrade plan created.** Full codebase review + live product visual audit completed. Plan covers 8 workstreams: W1 — backend-enforced admin auth (hashed passwords, session tokens, route protection, login modal); W2 — applicant/reviewer mode separation (clear state boundaries, hide "New Case" in reviewer mode, remove dead nav items); W3 — case-specific reviewer data isolation (`ReviewerChecks` table, per-case checkbox persistence); W4 — escalation workflow scaffold (drawer with email destination, no actual send); W5 — UI uplift (badge wrapping fix, breadcrumb contrast, sidebar collapse, Echo avatar sizing, review column heights, consistent button sizing); W6 — state/storage cleanup (prevent stale identity inheritance, informational query detection, resume-without-identity feedback); W7 — Echo branding & icon fixes; W8 — admin queue actions (per-row delete with confirmation, status transition validation). Also identified 7 independent issues (duplicate `formatTimestamp`, missing CSRF, identity headers leaking into admin requests). |
 | **2026-03-20T01:23:21-0400** | **Phase 2 remaining P2 fixes.** Implemented Fix 8 (Echo prompt tuning — more inquisitive tone, "university ID" terminology), Fix 9 (global search bar wired for case/student ID lookup on Enter), Fix 10 (session recovery on page refresh — reloads messages and restores case sidebar). All 17/17 Phase 2 fixes now complete. |

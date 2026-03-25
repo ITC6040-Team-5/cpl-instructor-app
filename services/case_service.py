@@ -73,12 +73,13 @@ def compute_completion(case_data, message_count=0, evidence_count=0):
         pct += 15
 
     # 4. Prior learning described (20%)
-    if message_count >= 6:
-        pct += 20
-    elif message_count >= 4:
-        pct += 15
-    elif message_count >= 2:
-        pct += 10
+    if name or sid or course:
+        if message_count >= 6:
+            pct += 20
+        elif message_count >= 4:
+            pct += 15
+        elif message_count >= 2:
+            pct += 10
 
     # 5. Evidence attached (15%)
     if evidence_count >= 1:
