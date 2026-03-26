@@ -15,8 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════
     // 0. State
     // ═══════════════════════════════════════════════════
-    // Echo avatar — Eve-inspired inline SVG (oval head + pill eyes), no CDN dependency
-    const ECHO_AVATAR = `<div class="avatar-small bg-ai"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="10" cy="10.5" rx="7" ry="8" fill="rgba(255,255,255,0.12)" stroke="white" stroke-width="1.4"/><rect x="4.5" y="9" width="4" height="2.5" rx="1.25" fill="white"/><rect x="11.5" y="9" width="4" height="2.5" rx="1.25" fill="white"/></svg></div>`;
+    // Echo avatar — ✦ (U+2726 Black Four Pointed Star), no CDN dependency
+    const ECHO_AVATAR = `<div class="avatar-small bg-ai" style="font-size:0.85rem;line-height:1;">✦</div>`;
 
     let sessionId = localStorage.getItem('cpl_session_id');
     if (!sessionId) {
