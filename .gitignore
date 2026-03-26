@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+antenv/
+.venv/
+
+# Environment variables
+.env
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Azure deployment artifacts
+.python_packages/
+
+# Local uploads (evidence files — use Azure Blob Storage in production)
+uploads/
+
+# Presentation folder — kept local, not part of the main repo
+Preso/
+
+# Logs
+*.log

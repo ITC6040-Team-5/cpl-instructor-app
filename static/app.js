@@ -713,6 +713,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     summary: detail.summary,
                     can_submit: (detail.completion_pct || 0) >= 80,
                 });
+
+                // Restore evidence list from DB (shows files even after page refresh)
+                if (detail.evidence && detail.evidence.length > 0) {
+                    const list = document.getElementById('intake-evidence-list');
+                    if (list) {
+                        list.innerHTML = '';
+                        detail.evidence.forEach(ev => {
+                            const icon = getFileIcon(ev.file_name);
+                            list.innerHTML += `<div class="compact-file-item">
+                                <i class="${icon}"></i>
+                                <div class="compact-file-info"><span class="compact-file-name">${escapeHtml(ev.file_name)}</span></div>
+                                <span class="badge green" style="font-size:0.6rem;">${ev.status || 'Uploaded'}</span>
+                            </div>`;
+                        });
+                    }
+                }
             }
         } catch (e) {
             console.error('Failed to load chat history', e);
@@ -1820,7 +1836,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (activeCase) {
                                 currentCaseId = activeCase.case_id;
                                 currentCompletionPct = activeCase.completion_pct || 0;
-                                updateIntakeSidebar(activeCase);
+                                updateIntakeSidebar({
+                                    ...activeCase,
+                                    can_submit: (activeCase.completion_pct || 0) >= 80,
+                                });
                             }
                         }
                     }
