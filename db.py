@@ -281,20 +281,30 @@ def _seed_knowledge_base(cursor):
 
 
 def _seed_admin_user(cursor):
-    """Seed default admin reviewer account if it doesn't exist."""
+    """Seed default admin reviewer account.
+    Always updates the password hash to ensure it matches the current scheme
+    (frontend SHA-256 pre-hash → werkzeug hash stored in DB)."""
     from werkzeug.security import generate_password_hash
+    import hashlib
     email = 'admin.reviewer@northeastern.edu'
     try:
+        # Password scheme: frontend sends sha256(raw_password), backend stores werkzeug_hash(sha256)
+        hashed_default = hashlib.sha256(b'100@QWERTY').hexdigest()
+        pw_hash = generate_password_hash(hashed_default)
         cursor.execute("SELECT 1 FROM AdminUsers WHERE email = ?", (email,))
         if not cursor.fetchone():
-            import hashlib
-            hashed_default = hashlib.sha256(b'100@QWERTY').hexdigest()
-            pw_hash = generate_password_hash(hashed_default)
             cursor.execute(
                 "INSERT INTO AdminUsers (email, password_hash, display_name) VALUES (?, ?, ?)",
                 (email, pw_hash, 'Admin Reviewer')
             )
             logger.info(f"Seeded default admin user: {email}")
+        else:
+            # Always update hash to ensure it matches current SHA-256 scheme
+            cursor.execute(
+                "UPDATE AdminUsers SET password_hash = ? WHERE email = ?",
+                (pw_hash, email)
+            )
+            logger.info(f"Updated admin user hash: {email}")
     except Exception as e:
         logger.warning(f"Could not seed admin user: {e}")
 

@@ -136,6 +136,18 @@ document.addEventListener('DOMContentLoaded', () => {
             footer.style.transform = path === '/chat' ? 'translateY(0)' : 'translateY(10px)';
         }
 
+        // Chat screen: zero out screens-container padding so split-layout fills viewport
+        const screensContainer = document.querySelector('.screens-container');
+        if (screensContainer) {
+            if (path === '/chat') {
+                screensContainer.style.padding = '0';
+                screensContainer.style.overflow = 'hidden';
+            } else {
+                screensContainer.style.padding = '';
+                screensContainer.style.overflow = '';
+            }
+        }
+
         // Route-entry hooks
         if (path === '/cases') fetchApplicantCases();
         if (path === '/admin') { fetchAdminCases(); switchToReviewerNav(); }
@@ -211,8 +223,6 @@ document.addEventListener('DOMContentLoaded', () => {
         chatTranscript.appendChild(loadingDiv);
         chatTranscript.scrollTop = chatTranscript.scrollHeight;
 
-        // (ECHO_AVATAR defined at module scope above)
-
         try {
             const payload = {
                 message: text,
@@ -226,84 +236,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: getRequestHeaders(),
                 body: JSON.stringify(payload),
             });
-
+            const data = await response.json();
             chatTranscript.removeChild(loadingDiv);
 
-            // Create assistant bubble immediately — will fill token by token
-            const aiDiv = document.createElement('div');
-            aiDiv.className = 'message assistant';
-            const contentP = document.createElement('p');
-            aiDiv.innerHTML = ECHO_AVATAR;
-            const msgContent = document.createElement('div');
-            msgContent.className = 'message-content';
-            msgContent.appendChild(contentP);
-            aiDiv.appendChild(msgContent);
-            chatTranscript.appendChild(aiDiv);
-            chatTranscript.scrollTop = chatTranscript.scrollHeight;
+            if (data.error) {
+                showToast(data.error, 'error');
+                return;
+            }
 
-            // Read the SSE stream
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            let fullAnswer = '';
+            // Update state from response
+            if (data.case_id) currentCaseId = data.case_id;
+            if (data.completion_pct !== undefined) currentCompletionPct = data.completion_pct;
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop(); // keep incomplete line
+            if (data.applicant_name && !applicantName) {
+                applicantName = data.applicant_name;
+                localStorage.setItem('cpl_applicant_name', applicantName);
+                updateProfileDisplay();
+            }
+            if (data.student_id && !studentId) {
+                studentId = data.student_id;
+                localStorage.setItem('cpl_student_id', studentId);
+            }
 
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    try {
-                        const evt = JSON.parse(line.slice(6));
+            chatHasUnsavedContent = !data.draft_saved;
 
-                        if (evt.error) {
-                            showToast(evt.error, 'error');
-                            break;
-                        }
-
-                        if (evt.token) {
-                            fullAnswer += evt.token;
-                            contentP.innerHTML = formatMarkdown(fullAnswer);
-                            chatTranscript.scrollTop = chatTranscript.scrollHeight;
-                        }
-
-                        if (evt.done) {
-                            // Final metadata — update state
-                            if (evt.case_id) currentCaseId = evt.case_id;
-                            if (evt.completion_pct !== undefined) currentCompletionPct = evt.completion_pct;
-
-                            if (evt.applicant_name && !applicantName) {
-                                applicantName = evt.applicant_name;
-                                localStorage.setItem('cpl_applicant_name', applicantName);
-                                updateProfileDisplay();
-                            }
-                            if (evt.student_id && !studentId) {
-                                studentId = evt.student_id;
-                                localStorage.setItem('cpl_student_id', studentId);
-                            }
-
-                            chatHasUnsavedContent = !evt.draft_saved;
-
-                            if (evt.draft_saved && evt.status === 'Draft') {
-                                if (!sessionStorage.getItem(`draft_toast_${sessionId}`)) {
-                                    showToast('Draft saved — you can return to this case later.', 'success');
-                                    sessionStorage.setItem(`draft_toast_${sessionId}`, '1');
-                                }
-                            }
-
-                            updateIntakeSidebar(evt);
-                        }
-                    } catch (parseErr) {
-                        // Ignore malformed SSE lines
-                    }
+            if (data.draft_saved && data.status === 'Draft') {
+                if (!sessionStorage.getItem(`draft_toast_${sessionId}`)) {
+                    showToast('Draft saved — you can return to this case later.', 'success');
+                    sessionStorage.setItem(`draft_toast_${sessionId}`, '1');
                 }
             }
 
+            updateIntakeSidebar(data);
+
+            const aiDiv = document.createElement('div');
+            aiDiv.className = 'message assistant';
+            aiDiv.innerHTML = `${ECHO_AVATAR}<div class="message-content"><p>${formatMarkdown(data.answer || 'Sorry, I could not process that.')}</p></div>`;
+            chatTranscript.appendChild(aiDiv);
+            chatTranscript.scrollTop = chatTranscript.scrollHeight;
+
         } catch (error) {
-            if (chatTranscript.contains(loadingDiv)) chatTranscript.removeChild(loadingDiv);
+            chatTranscript.removeChild(loadingDiv);
             showToast('Error connecting to backend. Please try again.', 'error');
             const errDiv = document.createElement('div');
             errDiv.className = 'message assistant';
