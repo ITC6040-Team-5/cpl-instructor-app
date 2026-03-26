@@ -909,7 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.className = 'clickable-row';
             tr.addEventListener('click', () => openAdminReview(c.case_id));
             tr.innerHTML = `
-                <td class="font-mono text-sm">${c.case_id}</td>
+                <td class="font-mono text-sm" style="white-space:nowrap;">${c.case_id}</td>
                 <td>
                     <div class="flex-align-center gap-2">
                         <div class="avatar-small img">${initials}</div>
@@ -919,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                 </td>
-                <td style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.target_course || '—')}</td>
+                <td><div style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.target_course || '—')}</div></td>
                 <td><span class="badge ${badgeClass}" style="white-space:nowrap;">${c.status}</span></td>
                 <td>
                     <div class="flex-align-center gap-2 text-sm">
