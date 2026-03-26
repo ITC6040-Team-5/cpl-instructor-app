@@ -608,6 +608,10 @@ button:active {
 .avatar {
     width: 36px;
     height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    flex-shrink: 0;
+    aspect-ratio: 1;
     border-radius: var(--radius-full);
     background: linear-gradient(135deg, #111827 0%, #374151 100%);
     color: white;
