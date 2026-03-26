@@ -278,7 +278,6 @@ def api_chat():
                         full_answer.append(delta.content)
                         yield f"data: {json.dumps({'token': delta.content})}\n\n"
 
-                # After stream complete — save message and run extraction
                 answer = "".join(full_answer).strip()
                 save_message(session_id, "assistant", answer)
 
@@ -300,7 +299,6 @@ def api_chat():
                     except Exception as e:
                         logger.warning(f"Extraction failed (non-fatal): {e}")
 
-                # Recompute completion and send final metadata event
                 refreshed = get_case_for_session(session_id) or case_data
                 case_resp = _apply_thresholds(refreshed, session_id)
                 yield f"data: {json.dumps({'done': True, 'answer': answer, **case_resp})}\n\n"
@@ -312,10 +310,7 @@ def api_chat():
         return Response(
             stream_with_context(generate_stream()),
             mimetype="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-            }
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     except Exception as e:
