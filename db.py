@@ -130,10 +130,46 @@ def init_db():
         _safe_add_column(cursor, 'Cases', 'completion_pct', 'INT DEFAULT 0')
         _safe_add_column(cursor, 'Cases', 'reviewer_notes', 'NVARCHAR(MAX)')
         _safe_add_column(cursor, 'Cases', 'updated_at', 'DATETIME DEFAULT GETDATE()')
+        _safe_add_column(cursor, 'Cases', 'conversation_summary', 'NVARCHAR(MAX)')
+        _safe_add_column(cursor, 'Cases', 'claimed_competencies', 'NVARCHAR(MAX)')
 
         _safe_add_column(cursor, 'Evidence', 'session_id', 'VARCHAR(255)')
         _safe_add_column(cursor, 'Evidence', 'user_id', 'VARCHAR(255)')
         _safe_add_column(cursor, 'Evidence', 'status', "VARCHAR(50) DEFAULT 'Uploaded'")
+
+        # ─── Knowledge Base Table ──────────────────────────
+
+        cursor.execute("""
+            IF OBJECT_ID('KnowledgeBase', 'U') IS NULL
+            CREATE TABLE KnowledgeBase (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                entry_type VARCHAR(50) NOT NULL,
+                entry_key VARCHAR(100),
+                title NVARCHAR(255) NOT NULL,
+                content NVARCHAR(MAX) NOT NULL,
+                is_active BIT DEFAULT 1,
+                created_at DATETIME DEFAULT GETDATE(),
+                updated_at DATETIME DEFAULT GETDATE()
+            )
+        """)
+
+        # ─── Escalations Table ─────────────────────────────
+
+        cursor.execute("""
+            IF OBJECT_ID('Escalations', 'U') IS NULL
+            CREATE TABLE Escalations (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                case_id VARCHAR(50) NOT NULL,
+                escalated_to_email VARCHAR(255),
+                escalated_to_name NVARCHAR(200),
+                escalation_notes NVARCHAR(MAX),
+                escalation_type VARCHAR(50) DEFAULT 'SME Review',
+                status VARCHAR(50) DEFAULT 'Pending',
+                resolution_notes NVARCHAR(MAX),
+                created_at DATETIME DEFAULT GETDATE(),
+                updated_at DATETIME DEFAULT GETDATE()
+            )
+        """)
 
         # ─── Admin Auth Tables ─────────────────────────────
 
@@ -174,6 +210,7 @@ def init_db():
 
         _seed_default_settings(cursor)
         _seed_admin_user(cursor)
+        _seed_knowledge_base(cursor)
 
         conn.commit()
         logger.info("Database schema initialized successfully.")
@@ -215,6 +252,32 @@ def _seed_default_settings(cursor):
             """, (key, key, value))
         except Exception:
             pass
+
+
+def _seed_knowledge_base(cursor):
+    """Seed KnowledgeBase from catalog.json if empty."""
+    import json, os
+    try:
+        cursor.execute("SELECT COUNT(*) FROM KnowledgeBase WHERE entry_type='course'")
+        if cursor.fetchone()[0] > 0:
+            return  # already seeded
+
+        catalog_path = os.path.join(os.path.dirname(__file__), 'knowledge', 'catalog.json')
+        if not os.path.exists(catalog_path):
+            return
+
+        with open(catalog_path, 'r', encoding='utf-8') as f:
+            catalog = json.load(f)
+
+        for code, description in catalog.items():
+            cursor.execute("""
+                INSERT INTO KnowledgeBase (entry_type, entry_key, title, content)
+                VALUES ('course', ?, ?, ?)
+            """, (code, f"{code}: {description[:60]}", description))
+
+        logger.info(f"Seeded {len(catalog)} courses into KnowledgeBase.")
+    except Exception as e:
+        logger.warning(f"KnowledgeBase seed failed: {e}")
 
 
 def _seed_admin_user(cursor):

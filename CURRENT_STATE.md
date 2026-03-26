@@ -109,7 +109,25 @@ Thresholds (configurable via Settings):
 
 ---
 
-## 7. Change Log
+## 7. V2 Implementation (2026-03-25)
+
+**Full v2 push. 10 files modified. Safety baseline: `063204e`**
+
+| Phase | Items | Status |
+|-------|-------|--------|
+| Bugs (B1-B5) | getIdentityHeaders fix, session messages endpoint, transition conflict, Azure Blob evidence, rolling context summary | ✅ |
+| Performance (P1-P4) | Smart phase-based RAG routing, extraction gating, streaming SSE, Echo verbosity rule | ✅ |
+| Visual (V1-V7) | Echo avatar CSS fix, chat density, markdown lists, chat immersive layout, sidebar collapse fix, settings grid, CSS variable aliases | ✅ |
+| Features (F1-F7) | Claimed Competencies, DB-backed KnowledgeBase + Settings UI, AI Confidence Score column, completion scoring rewrite, Escalation workflow (DB + API + UI), .env.example | ✅ |
+
+**New DB tables:** `KnowledgeBase`, `Escalations`
+**New DB columns:** `Cases.conversation_summary`, `Cases.claimed_competencies`
+**New dependency:** `azure-storage-blob==12.19.1`
+**New env vars:** `AZURE_STORAGE_CONNECTION_STRING`, `AZURE_STORAGE_CONTAINER`
+
+---
+
+## 9. Change Log (pre-v2)
 
 | Timestamp | Change |
 |-----------|--------|

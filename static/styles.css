@@ -94,7 +94,7 @@ body::before {
     content: '';
     position: fixed;
     top: 0;
-    left: var(--sidebar-width);
+    left: 0;
     right: 0;
     bottom: 0;
     background:
@@ -2292,4 +2292,288 @@ button:disabled {
 /* text-xs utility */
 .text-xs {
     font-size: 0.75rem;
+}
+
+/* ==========================================================================
+   V2 — Design System Fixes & Layout Evolution
+   ========================================================================== */
+
+/* ── V1: Echo avatar — missing .avatar-small.bg-ai class ─────────── */
+.avatar-small.bg-ai {
+    background: linear-gradient(135deg, var(--brand-accent) 0%, #db2777 100%);
+    color: white;
+    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── V2: Chat message density ─────────────────────────────────────── */
+.chat-transcript {
+    gap: 0.5rem;
+}
+
+.message-content p {
+    margin-bottom: 0.35rem;
+    line-height: 1.5;
+}
+
+/* Compact list rendering from formatMarkdown */
+.message-content ol,
+.message-content ul {
+    margin: 0.25rem 0 0.35rem 1.25rem;
+    padding: 0;
+}
+
+.message-content li {
+    margin-bottom: 0.2rem;
+    line-height: 1.45;
+    font-size: 0.9375rem;
+}
+
+/* ── V3: Chat immersive layout — fill viewport, zero outer padding ── */
+#intake-screen.screen-view.active {
+    padding: 0;
+    max-width: 100%;
+    margin: 0;
+}
+
+#intake-screen .split-layout {
+    height: calc(100vh - var(--topbar-height));
+    gap: 0;
+    padding: 0.75rem 1rem;
+    box-sizing: border-box;
+}
+
+.chat-column {
+    border-radius: var(--radius-xl);
+}
+
+.chat-header {
+    padding: 0.625rem 1.25rem;
+}
+
+.chat-header h2 {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.record-sidebar {
+    width: 290px;
+    min-width: 290px;
+    margin-left: 0.75rem;
+    transition: width var(--transition-layout), min-width var(--transition-layout), opacity var(--transition-normal);
+}
+
+.record-sidebar.collapsed {
+    width: 0;
+    min-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    margin-left: 0;
+}
+
+/* Sidebar collapse toggle button */
+.sidebar-collapse-btn {
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--bg-surface-solid);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 5;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    transition: all var(--transition-fast);
+}
+
+.sidebar-collapse-btn:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+/* ── V4: Sidebar footer inline override removal ───────────────────── */
+/* (handled in HTML — removing style="opacity:1" attribute) */
+
+/* ── V5: Settings grid ────────────────────────────────────────────── */
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.settings-grid .card-full-width {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── V6: CSS variable aliases (fix undefined references) ─────────── */
+:root {
+    --border-color: rgba(0, 0, 0, 0.08);
+    --status-red-text: #EF4444;
+    --bg-primary: #FFFFFF;
+    --bg-muted: rgba(0, 0, 0, 0.02);
+    --hover-bg: rgba(0, 0, 0, 0.02);
+}
+
+/* ── V7: Sidebar collapse — fix gradient dead zone + icon centering ─ */
+/* body::before left fixed at source (line ~97) */
+
+.app-container.collapsed .nav-item {
+    justify-content: center;
+    padding: 0.6rem;
+}
+
+.app-container.collapsed .nav-section-title {
+    display: none;
+}
+
+#sidebar-toggle {
+    transition: transform var(--transition-bounce), background-color var(--transition-fast);
+}
+
+.app-container.collapsed #sidebar-toggle {
+    transform: rotate(180deg) scale(1.05);
+}
+
+/* ── Admin review pane proportions ───────────────────────────────── */
+.case-review-layout {
+    grid-template-columns: 280px 1fr 300px;
+}
+
+/* ── Content header h2 size ──────────────────────────────────────── */
+.content-header h2 {
+    font-size: 1.5rem;
+}
+
+/* ── Colored file icons in compact evidence list ─────────────────── */
+.compact-file-item .ph-fill.ph-file-pdf { color: #EF4444; }
+.compact-file-item .ph-fill.ph-file-text { color: #3B82F6; }
+.compact-file-item .ph-fill.ph-image { color: #6366F1; }
+
+/* ── Claimed Competencies tags ───────────────────────────────────── */
+.competencies-section {
+    margin-bottom: 1.25rem;
+}
+
+.competencies-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+}
+
+.competency-tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--radius-full);
+    border: 1px solid transparent;
+}
+
+.competency-tag.confirmed {
+    background-color: var(--status-green-bg);
+    color: var(--status-green-text);
+    border-color: #A7F3D0;
+}
+
+.competency-tag.pending {
+    background-color: var(--status-yellow-bg);
+    color: var(--status-yellow-text);
+    border-color: #FDE68A;
+}
+
+/* ── Escalated status badge ──────────────────────────────────────── */
+.badge.orange {
+    background-color: #FFF7ED;
+    color: #C2410C;
+    border-color: #FED7AA;
+}
+
+/* ── Knowledge base settings card table ─────────────────────────── */
+.kb-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin-top: 0.75rem;
+}
+
+.kb-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.kb-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(0,0,0,0.03);
+    vertical-align: middle;
+}
+
+.kb-table tr:last-child td {
+    border-bottom: none;
+}
+
+.kb-table tr:hover td {
+    background: var(--bg-surface-hover);
+}
+
+/* ── Identity verification inline card ──────────────────────────── */
+.identity-verified-card {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--status-blue-bg);
+    border: 1px solid #BFDBFE;
+    border-radius: var(--radius-full);
+    padding: 0.375rem 0.875rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--status-blue-text);
+    margin: 0.25rem 0 0.5rem 2.5rem;
+    width: fit-content;
+}
+
+.identity-verified-card i {
+    font-size: 0.9rem;
+}
+
+/* ── Admin queue confidence score column ─────────────────────────── */
+.confidence-score-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* ── Escalation status in case timeline ─────────────────────────── */
+.timeline-step.escalated .step-indicator {
+    background-color: #C2410C;
+    border-color: #C2410C;
+    color: white;
+}
+
+.timeline-step.escalated:not(:last-child)::before {
+    background-color: #FED7AA;
 }

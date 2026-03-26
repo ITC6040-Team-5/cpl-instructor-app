@@ -138,7 +138,7 @@
             </div>
 
             <!-- User Footer in Sidebar -->
-            <div class="sidebar-footer" style="opacity: 1; visibility: visible;">
+            <div class="sidebar-footer">
                 <div class="user-profile" id="role-switch-btn" title="Switch Role" style="cursor: pointer;">
                     <div class="avatar" id="profile-avatar">AP</div>
                     <div class="user-info sidebar-text">
@@ -263,7 +263,10 @@
                         </div>
 
                         <!-- Record Sidebar (Tabbed) -->
-                        <div class="record-sidebar">
+                        <div class="record-sidebar" id="record-sidebar" style="position: relative;">
+                        <button class="sidebar-collapse-btn" id="record-sidebar-toggle" title="Toggle case record">
+                            <i class="ph ph-caret-right"></i>
+                        </button>
                             <div class="record-header">
                                 <div class="record-tabs">
                                     <button class="record-tab active" data-tab="case-record-tab">Case Record</button>
@@ -288,8 +291,12 @@
                                         <div class="field-value" id="intake-case-status">No active case</div>
                                     </div>
                                     <div class="field-group">
-                                        <label>Summary</label>
+                                        <label>Summary of Experience</label>
                                         <div class="field-box" id="intake-case-summary">Start a conversation to begin building your case.</div>
+                                    </div>
+                                    <div class="competencies-section" id="intake-competencies-section" style="display:none;">
+                                        <label style="font-size:0.7rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;">Claimed Competencies</label>
+                                        <div class="competencies-list" id="intake-competencies-list"></div>
                                     </div>
                                 </div>
                             </div>
@@ -486,6 +493,7 @@
                                     <th class="sortable" data-sort="target_course">Target Course</th>
                                     <th class="sortable" data-sort="status">Status</th>
                                     <th class="sortable" data-sort="completion_pct">Completion</th>
+                                    <th class="sortable" data-sort="confidence_score">AI Confidence</th>
                                     <th class="sortable" data-sort="updated_at">Date Updated</th>
                                     <th></th>
                                 </tr>
@@ -636,7 +644,12 @@
                                 <span>Require Evidence Links</span>
                                 <div class="toggle active" id="toggle-require-evidence"></div>
                             </div>
-                            <button class="btn-secondary mt-3" disabled title="Coming soon">Edit System Prompts</button>
+                            <div class="field-group mt-3">
+                                <label>System Prompt Addendum</label>
+                                <textarea class="input-field" id="setting-system-prompt-addendum" rows="3"
+                                    placeholder="Add custom instructions to Echo's system prompt..."></textarea>
+                                <span class="text-sm text-muted">Appended to Echo's base instructions.</span>
+                            </div>
                         </div>
 
                         <!-- Card 3: Workflow & Routing -->
@@ -653,6 +666,67 @@
                             <button class="btn-secondary" disabled title="Coming soon"><i class="ph ph-plus"></i> Add Rule</button>
                             <p class="text-sm text-muted mt-2"><i class="ph ph-info"></i> Routing rules coming in a future update.</p>
                         </div>
+                    </div>
+
+                    <!-- Knowledge Base Card (full width) -->
+                    <div class="card card-full-width mt-0" style="margin-top: 0;">
+                        <div class="flex-between mb-3">
+                            <div>
+                                <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-books"></i></div>
+                                <h3>Course Catalog &amp; Knowledge Base</h3>
+                                <p class="text-sm text-muted">Manage courses and policies that guide Echo's recommendations. Persists across deployments.</p>
+                            </div>
+                            <div class="flex-align-center gap-2">
+                                <button class="btn-secondary" id="kb-add-btn"><i class="ph ph-plus"></i> Add Entry</button>
+                                <button class="btn-secondary" id="kb-refresh-btn"><i class="ph ph-arrow-clockwise"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Add entry form (hidden by default) -->
+                        <div id="kb-add-form" style="display:none;" class="bg-gray rounded p-4 mb-3">
+                            <div style="display:grid; grid-template-columns: 120px 1fr 1fr; gap: 12px; align-items:end;">
+                                <div class="field-group mb-0">
+                                    <label>Type</label>
+                                    <select class="input-field" id="kb-new-type">
+                                        <option value="course">course</option>
+                                        <option value="policy">policy</option>
+                                        <option value="example">example</option>
+                                    </select>
+                                </div>
+                                <div class="field-group mb-0">
+                                    <label>Code / Key</label>
+                                    <input type="text" class="input-field" id="kb-new-key" placeholder="e.g. DGM6105">
+                                </div>
+                                <div class="field-group mb-0">
+                                    <label>Title</label>
+                                    <input type="text" class="input-field" id="kb-new-title" placeholder="Course or policy name">
+                                </div>
+                            </div>
+                            <div class="field-group mt-2 mb-2">
+                                <label>Description / Content</label>
+                                <textarea class="input-field" id="kb-new-content" rows="2" placeholder="Full description..."></textarea>
+                            </div>
+                            <div class="flex-align-center gap-2">
+                                <button class="btn-primary" id="kb-save-btn"><i class="ph ph-floppy-disk"></i> Save</button>
+                                <button class="btn-secondary" id="kb-cancel-btn">Cancel</button>
+                            </div>
+                        </div>
+
+                        <!-- Entries table -->
+                        <table class="kb-table" id="kb-table">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Code</th>
+                                    <th>Title</th>
+                                    <th>Content</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="kb-table-body">
+                                <tr><td colspan="5" class="text-center text-muted p-4">Loading...</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </section>
 
@@ -694,7 +768,7 @@
                 <button class="btn-icon drawer-close" id="escalation-drawer-close"><i class="ph ph-x"></i></button>
             </div>
             <div class="drawer-body">
-                <p class="text-sm text-muted mb-4">Prepare an escalation for faculty or committee review.</p>
+                <p class="text-sm text-muted mb-4">Record an escalation for expert or committee review. This saves a trackable record.</p>
                 <div class="field-group mb-3">
                     <label>Case Reference</label>
                     <div class="field-value font-mono" id="escalation-case-ref">—</div>
@@ -704,15 +778,27 @@
                     <div class="field-value" id="escalation-applicant">—</div>
                 </div>
                 <div class="field-group mb-3">
+                    <label for="escalation-type">Escalation Type</label>
+                    <select class="input-field" id="escalation-type">
+                        <option value="SME Review">SME Review — Subject Matter Expert</option>
+                        <option value="Faculty Review">Faculty Review</option>
+                        <option value="Validation Session">Validation Session (Quiz/Assessment)</option>
+                    </select>
+                </div>
+                <div class="field-group mb-3">
+                    <label for="escalation-to-name">Escalate To (Name)</label>
+                    <input type="text" class="input-field" id="escalation-to-name" placeholder="Prof. Smith or Committee Name">
+                </div>
+                <div class="field-group mb-3">
                     <label for="escalation-email">Escalate To (Email)</label>
                     <input type="email" class="input-field" id="escalation-email" placeholder="faculty@northeastern.edu">
                 </div>
                 <div class="field-group mb-3">
                     <label for="escalation-notes">Escalation Notes</label>
-                    <textarea class="w-full" rows="4" id="escalation-notes" placeholder="Describe the reason for escalation..."></textarea>
+                    <textarea class="input-field w-full" rows="4" id="escalation-notes" placeholder="Describe the reason for escalation and what the reviewer should assess..."></textarea>
                 </div>
-                <button class="btn-primary full-width" id="escalation-prepare-btn"><i class="ph ph-paper-plane-tilt"></i> Prepare Escalation</button>
-                <p class="text-sm text-muted mt-2 text-center"><i class="ph ph-info"></i> Email delivery is not yet connected. This prepares the escalation record.</p>
+                <button class="btn-primary full-width" id="escalation-prepare-btn"><i class="ph ph-check-circle"></i> Record Escalation</button>
+                <p class="text-sm text-muted mt-2 text-center"><i class="ph ph-info"></i> Saves a trackable escalation record. Email integration coming soon.</p>
             </div>
         </div>
     </div>

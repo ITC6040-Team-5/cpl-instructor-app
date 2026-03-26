@@ -21,6 +21,7 @@ Extract the following fields from the conversation. Return ONLY valid JSON with 
 - "prior_learning_summary": a 1-2 sentence summary of their relevant prior experience (null if not discussed yet)
 - "completion_assessment": a brief assessment of how complete this case is (1 sentence)
 - "confidence_score": 0-100 score of how well their experience aligns with the course (null if insufficient info)
+- "claimed_competencies": list of specific competency tags the student has claimed (e.g. ["Agile Methodologies", "Team Leadership", "Budget Management"]). Only include competencies explicitly mentioned. Empty list if none yet.
 
 Be precise. Only extract what is explicitly stated. Do not infer or fabricate.
 
@@ -77,12 +78,20 @@ def extract_case_data(messages):
             raw = raw.strip()
 
         data = json.loads(raw)
+        import json as _json
+        raw_competencies = data.get("claimed_competencies", [])
+        if isinstance(raw_competencies, list):
+            competencies_json = _json.dumps(raw_competencies) if raw_competencies else None
+        else:
+            competencies_json = None
+
         extracted = {
             "target_course": data.get("target_course"),
             "applicant_name": data.get("applicant_name"),
             "student_id": data.get("student_id"),
             "summary": data.get("prior_learning_summary"),
             "confidence_score": data.get("confidence_score"),
+            "claimed_competencies": competencies_json,
         }
 
         # Name normalization: trim, title-case, prefer more complete names
