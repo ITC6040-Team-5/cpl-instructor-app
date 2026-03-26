@@ -214,6 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         chatTranscript.appendChild(msgDiv);
         chatInput.value = '';
+        chatInput.style.height = 'auto';
         chatTranscript.scrollTop = chatTranscript.scrollHeight;
 
         // Loading indicator
@@ -240,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
             aiDiv.className = 'message assistant';
             const msgContent = document.createElement('div');
             msgContent.className = 'message-content';
-            const textP = document.createElement('p');
+            const textP = document.createElement('div'); // div not p — marked outputs block HTML
             msgContent.appendChild(textP);
             aiDiv.innerHTML = ECHO_AVATAR;
             aiDiv.appendChild(msgContent);
@@ -369,9 +370,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (chatSendBtn && chatInput) {
-        chatSendBtn.addEventListener('click', () => appendUserMessage(chatInput.value));
-        chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') appendUserMessage(chatInput.value);
+        chatSendBtn.addEventListener('click', () => {
+            appendUserMessage(chatInput.value);
+            chatInput.style.height = 'auto';
+        });
+
+        // Auto-resize textarea up to 3 lines
+        chatInput.addEventListener('input', () => {
+            chatInput.style.height = 'auto';
+            chatInput.style.height = Math.min(chatInput.scrollHeight, 84) + 'px';
+        });
+
+        // Enter sends, Shift+Enter adds newline
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                appendUserMessage(chatInput.value);
+                chatInput.style.height = 'auto';
+            }
         });
     }
 
@@ -680,7 +696,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const div = document.createElement('div');
                         div.className = `message ${msg.role}`;
                         if (isAI) {
-                            div.innerHTML = `<div class="avatar-small bg-ai"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg></div><div class="message-content"><p>${formatMarkdown(msg.content)}</p></div>`;
+                            div.innerHTML = `${ECHO_AVATAR}<div class="message-content"><div>${formatMarkdown(msg.content)}</div></div>`;
                         } else {
                             const ini = applicantName ? applicantName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'ME';
                             div.innerHTML = `<div class="avatar-small img">${ini}</div><div class="message-content"><p>${escapeHtml(msg.content)}</p></div>`;
@@ -727,7 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isAI = msg.role === 'assistant';
                 html += `<div class="message ${msg.role}">
                     <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg>' : 'ST'}</div>
-                    <div class="message-content"><p>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</p></div>
+                    <div class="message-content"><div>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div></div>
                 </div>`;
             });
         } else {
@@ -897,14 +913,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>
                     <div class="flex-align-center gap-2">
                         <div class="avatar-small img">${initials}</div>
-                        <div>
-                            <strong>${c.applicant || 'Unknown'}</strong>
-                            ${c.student_id ? `<span class="text-xs text-muted" style="display:block">${c.student_id}</span>` : ''}
+                        <div style="min-width:0;">
+                            <strong class="admin-applicant-name">${escapeHtml(c.applicant || 'Unknown')}</strong>
+                            ${c.student_id ? `<span class="admin-applicant-sub">${escapeHtml(c.student_id)}</span>` : ''}
                         </div>
                     </div>
                 </td>
-                <td>${c.target_course || '—'}</td>
-                <td><span class="badge ${badgeClass}">${c.status}</span></td>
+                <td class="admin-applicant-name" style="max-width:160px;">${escapeHtml(c.target_course || '—')}</td>
+                <td><span class="badge ${badgeClass}" style="white-space:nowrap;">${c.status}</span></td>
                 <td>
                     <div class="flex-align-center gap-2 text-sm">
                         <div class="progress-bar-bg small">
@@ -924,12 +940,81 @@ document.addEventListener('DOMContentLoaded', () => {
                         : '<span class="text-muted">—</span>'
                     }
                 </td>
-                <td class="text-sm text-muted">${formatTimestamp(c.updated_at)}</td>
+                <td class="text-sm text-muted" style="white-space:nowrap;">${formatTimestamp(c.updated_at)}</td>
                 <td><button class="btn-icon"><i class="ph ph-caret-right"></i></button></td>
+                <td onclick="event.stopPropagation()">
+                    <button class="btn-icon" style="color:var(--status-danger);" title="Delete case"
+                        onclick="openAdminDeleteConfirm('${c.case_id}')">
+                        <i class="ph ph-trash"></i>
+                    </button>
+                </td>
             `;
             tbody.appendChild(tr);
         });
     }
+
+    window.openAdminDeleteConfirm = async function(caseId) {
+        const caseData = _allAdminCases.find(c => c.case_id === caseId);
+        if (!caseData) return;
+
+        const pct = caseData.completion_pct || 0;
+        const confidence = caseData.confidence_score || 0;
+        const hasSummary = caseData.summary && caseData.summary.length > 50;
+        const isSubstantive = pct >= 60 || confidence >= 60 || hasSummary;
+
+        const qualityNote = isSubstantive
+            ? `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:0.75rem 1rem;margin-bottom:0.75rem;font-size:0.875rem;color:#92400E;">
+                <strong>⚠ This case may contain genuine information</strong> — the applicant appears to have provided meaningful prior learning details
+                (${pct}% complete${confidence ? `, ${confidence}% AI confidence` : ''}).
+                Review before deleting.
+               </div>`
+            : `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:0.75rem 1rem;margin-bottom:0.75rem;font-size:0.875rem;color:#166534;">
+                This case appears to be a test or exploratory conversation with minimal case data (${pct}% complete).
+               </div>`;
+
+        const body = `
+            ${qualityNote}
+            <p style="margin-bottom:0.75rem;">You are about to permanently delete case <strong>${escapeHtml(caseId)}</strong>
+            ${caseData.applicant ? ` for <strong>${escapeHtml(caseData.applicant)}</strong>` : ''}.
+            All messages, evidence records, and reviewer data will be removed.</p>
+            <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;">
+                <strong style="color:#DC2626;">⛔ This action is irreversible.</strong>
+                <span style="color:#991B1B;font-size:0.875rem;"> There is no undo. The data cannot be recovered once deleted.</span>
+            </div>
+            <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;color:var(--text-muted);cursor:not-allowed;opacity:0.55;" title="Email integration coming soon">
+                <input type="checkbox" disabled>
+                <span>Notify student via email <em style="font-size:0.78rem;">(email integration coming soon)</em></span>
+            </label>
+        `;
+
+        showModal({
+            title: 'Delete Case',
+            body,
+            confirmText: 'Delete Permanently',
+            cancelText: 'Cancel',
+            dangerous: true,
+            onConfirm: async () => {
+                try {
+                    const resp = await fetch(`/api/admin/case/${caseId}`, {
+                        method: 'DELETE',
+                        headers: getAdminHeaders(),
+                    });
+                    const data = await resp.json();
+                    if (resp.ok) {
+                        showToast(`Case ${caseId} deleted.`, 'success');
+                        fetchAdminCases();
+                        if (window.location.pathname.startsWith('/admin/review')) {
+                            navigateTo('/admin');
+                        }
+                    } else {
+                        showToast(data.error || 'Delete failed.', 'error');
+                    }
+                } catch (e) {
+                    showToast('Delete failed.', 'error');
+                }
+            },
+        });
+    };
 
     async function fetchAdminCases() {
         const tbody = document.querySelector('#admin-cases-table tbody');
@@ -1019,7 +1104,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     div.className = `message ${msg.role}`;
                     div.innerHTML = `
                         <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg>' : (data.applicant_name || 'ST').substring(0, 2).toUpperCase()}</div>
-                        <div class="message-content"><p>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</p></div>
+                        <div class="message-content"><div>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div></div>
                     `;
                     transcriptBody.appendChild(div);
                 });
@@ -1034,7 +1119,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 data.evidence.forEach(ev => {
                     const icon = getFileIcon(ev.file_name);
                     const statusBadge = ev.status === 'Uploaded' ? 'green' : 'blue';
-                    evidenceList.innerHTML += `<div class="file-item"><i class="${icon}"></i> ${ev.file_name} <span class="badge ${statusBadge}" style="font-size:0.6rem;">${ev.status}</span></div>`;
+                    const downloadUrl = `/api/evidence/download/${caseId}/${encodeURIComponent(ev.file_name)}`;
+                    evidenceList.innerHTML += `<div class="file-item" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                        <i class="${icon}" style="flex-shrink:0;"></i>
+                        <a href="${downloadUrl}" target="_blank" rel="noopener" class="admin-applicant-name" style="flex:1;color:var(--brand-accent);text-decoration:none;font-size:0.8rem;" title="${escapeHtml(ev.file_name)}">${escapeHtml(ev.file_name)}</a>
+                        <span class="badge ${statusBadge}" style="font-size:0.6rem;flex-shrink:0;">${ev.status}</span>
+                        <a href="${downloadUrl}" download="${escapeHtml(ev.file_name)}" title="Download" style="color:var(--text-muted);flex-shrink:0;"><i class="ph ph-download-simple"></i></a>
+                    </div>`;
                 });
             }
 
@@ -1546,10 +1637,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (chatTranscript) {
                         const attachDiv = document.createElement('div');
                         attachDiv.className = 'message user';
-                        attachDiv.innerHTML = `<div class="avatar-small img">ME</div><div class="message-content"><p>📎 <em>${data.filename}</em> uploaded</p></div>`;
+                        attachDiv.innerHTML = `<div class="avatar-small img">ME</div><div class="message-content"><p>📎 <em>${escapeHtml(data.filename)}</em> uploaded</p></div>`;
                         chatTranscript.appendChild(attachDiv);
                         chatTranscript.scrollTop = chatTranscript.scrollHeight;
                     }
+
+                    // Auto-trigger Echo to acknowledge the uploaded file
+                    setTimeout(() => {
+                        appendUserMessage(`I've just uploaded "${data.filename}" as supporting evidence for my case.`);
+                    }, 400);
                 } else {
                     showToast(data.error || 'Upload failed.', 'error');
                 }
@@ -1599,35 +1695,21 @@ document.addEventListener('DOMContentLoaded', () => {
         return div.innerHTML;
     }
 
+    // Configure marked once at init: GFM (GitHub Flavored Markdown) + line breaks
+    if (typeof marked !== 'undefined') {
+        marked.use({ breaks: true, gfm: true });
+    }
+
     function formatMarkdown(text) {
         if (!text) return '';
-        // Bold and italic
-        let result = text
+        if (typeof marked !== 'undefined') {
+            return marked.parse(text);
+        }
+        // Fallback if CDN fails to load
+        return text
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-        // Numbered lists: lines starting with "1. ", "2. " etc.
-        result = result.replace(/((?:^\d+\.\s+.+(?:\n|$))+)/gm, (match) => {
-            const items = match.trim().split('\n').map(line =>
-                `<li>${line.replace(/^\d+\.\s+/, '')}</li>`
-            ).join('');
-            return `<ol>${items}</ol>`;
-        });
-
-        // Bullet lists: lines starting with "- " or "• "
-        result = result.replace(/((?:^[-•]\s+.+(?:\n|$))+)/gm, (match) => {
-            const items = match.trim().split('\n').map(line =>
-                `<li>${line.replace(/^[-•]\s+/, '')}</li>`
-            ).join('');
-            return `<ul>${items}</ul>`;
-        });
-
-        // Paragraph breaks (double newline) → paragraph gap
-        result = result.replace(/\n\n+/g, '</p><p>');
-        // Single newlines → <br>
-        result = result.replace(/\n/g, '<br>');
-
-        return result;
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/\n/g, '<br>');
     }
 
 
@@ -1720,7 +1802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const isAI = msg.role === 'assistant';
                             div.innerHTML = `
                                 <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg>' : (applicantName || 'ME').substring(0, 2).toUpperCase()}</div>
-                                <div class="message-content"><p>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</p></div>
+                                <div class="message-content"><div>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div></div>
                             `;
                             chatTranscript.appendChild(div);
                         });
