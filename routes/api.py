@@ -250,6 +250,21 @@ def api_chat():
         if prompt_addendum:
             base_prompt += f"\n\n## Institution-Specific Instructions:\n{prompt_addendum}"
 
+        # Inject live case state so Echo knows exactly where things stand
+        if case_data:
+            pct = case_data.get('completion_pct', 0) or 0
+            status = case_data.get('status', 'New')
+            submitted_statuses = ('Submitted', 'Under Review', 'Approved', 'Denied', 'Revision Requested', 'Escalated')
+            state_note = f"\n\n[CASE STATE: {pct}% complete, status: {status}."
+            if status in submitted_statuses:
+                state_note += " The student has already submitted their case. Acknowledge this warmly. Let them know they can continue the conversation — any additional details they share will be visible to the reviewer."
+            elif pct >= 80:
+                state_note += " The case has reached submission threshold. Proactively tell the student: 'Your case looks strong — you can click the Submit for Review button in the sidebar whenever you're ready.' Do not wait for them to ask."
+            elif pct >= 60:
+                state_note += " The case is getting close. Keep gathering details to strengthen it."
+            state_note += "]"
+            base_prompt += state_note
+
         messages = [{"role": "system", "content": base_prompt}]
         # Inject rolling summary if available
         if existing_summary:
@@ -776,6 +791,80 @@ def save_reviewer_checks(case_id):
     except Exception as e:
         logger.error(f"Failed to save reviewer checks: {e}")
         return jsonify({"error": "Failed to save checks."}), 500
+    finally:
+        conn.close()
+
+
+# ═══════════════════════════════════════════════════
+# Evidence Download
+# ═══════════════════════════════════════════════════
+
+@api_bp.get("/evidence/download/<case_id>/<path:filename>")
+@require_admin
+def download_evidence(case_id, filename):
+    """Serve an evidence file for admin download. Redirects to blob URL or serves local file."""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT file_path FROM Evidence WHERE case_id = ? AND file_name = ?",
+            (case_id, filename)
+        )
+        row = cursor.fetchone()
+        if not row or not row.file_path:
+            return jsonify({"error": "File not found"}), 404
+        file_path = row.file_path
+    except Exception as e:
+        logger.error(f"download_evidence lookup failed: {e}")
+        return jsonify({"error": "Lookup failed"}), 500
+    finally:
+        conn.close()
+
+    if file_path.startswith("https://"):
+        from flask import redirect as flask_redirect
+        return flask_redirect(file_path)
+    else:
+        from flask import send_file
+        import os
+        if not os.path.exists(file_path):
+            return jsonify({"error": "File not found on disk"}), 404
+        return send_file(file_path, as_attachment=True, download_name=filename)
+
+
+# ═══════════════════════════════════════════════════
+# Admin Case Delete
+# ═══════════════════════════════════════════════════
+
+@api_bp.delete("/admin/case/<case_id>")
+@require_admin
+def admin_delete_case(case_id):
+    """Admin hard-delete of any case regardless of status or completion.
+    Removes case, messages, evidence records, reviewer checks, and escalations."""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT case_id FROM Cases WHERE case_id = ?", (case_id,))
+        if not cursor.fetchone():
+            return jsonify({"error": "Case not found"}), 404
+        # Delete dependent records first
+        for tbl_query in [
+            ("DELETE FROM Evidence WHERE case_id = ?", (case_id,)),
+            ("DELETE FROM ReviewerChecks WHERE case_id = ?", (case_id,)),
+            ("DELETE FROM Escalations WHERE case_id = ?", (case_id,)),
+            ("DELETE FROM Messages WHERE session_id = (SELECT session_id FROM Cases WHERE case_id = ?)", (case_id,)),
+            ("DELETE FROM Cases WHERE case_id = ?", (case_id,)),
+        ]:
+            cursor.execute(tbl_query[0], tbl_query[1])
+        conn.commit()
+        logger.info(f"Admin deleted case: {case_id}")
+        return jsonify({"status": "success", "case_id": case_id, "message": f"Case {case_id} permanently deleted."})
+    except Exception as e:
+        logger.error(f"admin_delete_case failed: {e}")
+        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 

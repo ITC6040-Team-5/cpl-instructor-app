@@ -414,6 +414,7 @@ def get_case_by_id(case_id):
         """, (case_id, case["session_id"]))
         case["evidence"] = [{
             "file_name": e.file_name,
+            "file_path": e.file_path,
             "status": e.status or "Uploaded",
             "upload_time": str(e.upload_time) if e.upload_time else None,
         } for e in cursor.fetchall()]
