@@ -56,9 +56,8 @@ You are NOT a chatbot. You are an intelligent, patient intake advisor who guides
 6. **Submission Guidance** — When enough information is gathered, proactively tell the student: "Your case looks ready! You can click the 'Submit for Review' button in the sidebar to send it to the evaluation team." Do NOT wait for the student to ask.
 
 ## Behavioral Rules:
+- **Response length (non-negotiable): Match your length to the message you received. Short question or greeting → 1–2 sentences maximum. Never open a conversation with a paragraph or bullet list unless the student explicitly asks for a list. Ask ONE question at a time.**
 - Be warm, curious, and conversational — never robotic or form-like
-- Ask ONE or TWO questions at a time, not a long list
-- **If the user asks a simple or brief question, keep your response incredibly brief (1-2 sentences). Do not send overly long responses unless necessary.**
 - **Do not overclaim actions ("I can do this", "I will process that"). You simply gather and map information.**
 - Acknowledge what the student shares before asking the next question ("That's great experience — " or "Thanks for sharing that")
 - Follow up on interesting details — show genuine interest in their story
@@ -214,63 +213,110 @@ def api_chat():
         if err:
             return jsonify({"error": err}), 500
 
-        # RAG: inject policy context
-        policy_context = retrieve_policy_context(user_message)
+        # RAG: inject policy context (phase-aware — only when needed)
+        policy_context = retrieve_policy_context(user_message, case_data or {})
         university_name = get_setting("university_name") or "Northeastern University"
+        prompt_addendum = get_setting("system_prompt_addendum") or ""
 
         history = get_message_history(session_id)
-        messages = [
-            {"role": "system", "content": ECHO_SYSTEM_PROMPT.format(
-                policy_context=policy_context,
-                university_name=university_name,
-            )}
-        ]
-        messages.extend(history[-10:])
+
+        # ── Rolling context summary (context compacting) ──
+        # When conversations get long, summarize older turns instead of
+        # sending everything — keeps context bounded at ~8 messages + summary
+        existing_summary = case_data.get("conversation_summary") if case_data else None
+        if len(history) > 12 and len(history) % 6 == 0:
+            try:
+                summary_resp = client.chat.completions.create(
+                    model=deployment,
+                    messages=[{"role": "user", "content":
+                        f"In 3-5 sentences, summarize this CPL intake conversation. "
+                        f"Include: student name and ID if given, course they want credit for, "
+                        f"prior experience described, and any evidence mentioned.\n\n"
+                        + "\n".join(f"{m['role'].upper()}: {m['content']}" for m in history[:-8])
+                    }],
+                    temperature=0.0,
+                    max_tokens=200,
+                )
+                existing_summary = (summary_resp.choices[0].message.content or "").strip()
+                if existing_summary and case_id:
+                    update_case(case_id, {"conversation_summary": existing_summary})
+            except Exception as e:
+                logger.warning(f"Context summary failed (non-fatal): {e}")
+
+        base_prompt = ECHO_SYSTEM_PROMPT.format(
+            policy_context=policy_context,
+            university_name=university_name,
+        )
+        if prompt_addendum:
+            base_prompt += f"\n\n## Institution-Specific Instructions:\n{prompt_addendum}"
+
+        messages = [{"role": "system", "content": base_prompt}]
+        # Inject rolling summary if available
+        if existing_summary:
+            messages.append({"role": "system", "content": f"Prior conversation context: {existing_summary}"})
+
+        messages.extend(history[-8:])
 
         if not history or history[-1].get("content") != user_message:
             messages.append({"role": "user", "content": user_message})
 
-        response = client.chat.completions.create(
-            model=deployment,
-            messages=messages,
-            temperature=0.3,
-        )
+        # ── Streaming response ──
+        from flask import Response, stream_with_context
 
-        message = response.choices[0].message
-        answer = (message.content or "").strip()
-        save_message(session_id, "assistant", answer)
-
-        # ── Progressive extraction ──
-        # Run after every response to keep case record updated
-        all_messages = get_message_history(session_id)
-        if len(all_messages) >= 2:
+        def generate_stream():
+            full_answer = []
             try:
-                extracted = extract_case_data(all_messages)
-                if extracted and case_id:
-                    updates = {k: v for k, v in extracted.items() if v}
-                    # Merge applicant info from extraction
-                    if updates.get("applicant_name") and not applicant_info.get("applicant_name"):
-                        applicant_info["applicant_name"] = updates["applicant_name"]
-                        # Generate email from name
-                        uni_domain = (university_name or "northeastern.edu").lower().replace(" ", "") + ".edu"
-                        if "." not in uni_domain.split("@")[-1] if "@" in uni_domain else True:
-                            uni_domain = "northeastern.edu"
-                        updates["applicant_email"] = generate_email(updates["applicant_name"], uni_domain)
+                stream = client.chat.completions.create(
+                    model=deployment,
+                    messages=messages,
+                    temperature=0.3,
+                    stream=True,
+                )
+                for chunk in stream:
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    if delta and delta.content:
+                        full_answer.append(delta.content)
+                        yield f"data: {json.dumps({'token': delta.content})}\n\n"
 
-                    # Retroactive user_id update: fix cases created as "anonymous"
-                    resolved_id = updates.get("student_id") or applicant_info.get("student_id")
-                    if resolved_id and case_data.get("user_id") in (None, "", "anonymous"):
-                        updates["user_id"] = resolved_id
+                # After stream complete — save message and run extraction
+                answer = "".join(full_answer).strip()
+                save_message(session_id, "assistant", answer)
 
-                    update_case(case_id, updates)
+                # Progressive extraction (gated at 4+ messages)
+                all_messages = get_message_history(session_id)
+                if len(all_messages) >= 4:
+                    try:
+                        extracted = extract_case_data(all_messages)
+                        if extracted and case_id:
+                            updates = {k: v for k, v in extracted.items() if v}
+                            if updates.get("applicant_name") and not applicant_info.get("applicant_name"):
+                                applicant_info["applicant_name"] = updates["applicant_name"]
+                                uni_domain = "northeastern.edu"
+                                updates["applicant_email"] = generate_email(updates["applicant_name"], uni_domain)
+                            resolved_id = updates.get("student_id") or applicant_info.get("student_id")
+                            if resolved_id and case_data.get("user_id") in (None, "", "anonymous"):
+                                updates["user_id"] = resolved_id
+                            update_case(case_id, updates)
+                    except Exception as e:
+                        logger.warning(f"Extraction failed (non-fatal): {e}")
+
+                # Recompute completion and send final metadata event
+                refreshed = get_case_for_session(session_id) or case_data
+                case_resp = _apply_thresholds(refreshed, session_id)
+                yield f"data: {json.dumps({'done': True, 'answer': answer, **case_resp})}\n\n"
+
             except Exception as e:
-                logger.warning(f"Extraction failed (non-fatal): {e}")
+                logger.exception("Streaming chat error")
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-        # Recompute completion and apply thresholds
-        case_data = get_case_for_session(session_id) or case_data
-        case_resp = _apply_thresholds(case_data, session_id)
-
-        return jsonify({"answer": answer, **case_resp})
+        return Response(
+            stream_with_context(generate_stream()),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            }
+        )
 
     except Exception as e:
         logger.exception("Chat API error")
@@ -314,6 +360,7 @@ def _apply_thresholds(case_data, session_id):
         "summary": case_data.get("summary"),
         "applicant_name": case_data.get("applicant_name"),
         "student_id": case_data.get("student_id"),
+        "claimed_competencies": case_data.get("claimed_competencies"),
         "can_submit": pct >= submit_threshold,
         "draft_saved": status != "New",
     }
@@ -396,6 +443,23 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def _upload_to_blob(file_data, blob_name):
+    """Upload file to Azure Blob Storage. Returns public URL or None on failure."""
+    conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    container = os.getenv("AZURE_STORAGE_CONTAINER", "evidence-uploads")
+    if not conn_str:
+        return None
+    try:
+        from azure.storage.blob import BlobServiceClient
+        client = BlobServiceClient.from_connection_string(conn_str)
+        blob_client = client.get_blob_client(container=container, blob=blob_name)
+        blob_client.upload_blob(file_data, overwrite=True)
+        return blob_client.url
+    except Exception as e:
+        logger.error(f"Blob upload failed: {e}")
+        return None
+
+
 @api_bp.post("/evidence/upload")
 def upload_evidence():
     if 'file' not in request.files:
@@ -415,12 +479,20 @@ def upload_evidence():
     file.seek(0)
 
     filename = werkzeug.utils.secure_filename(file.filename)
-    upload_folder = os.path.join(current_app.root_path, 'uploads')
-    os.makedirs(upload_folder, exist_ok=True)
-
     unique_filename = f"{uuid.uuid4().hex}_{filename}"
-    file_path = os.path.join(upload_folder, unique_filename)
-    file.save(file_path)
+
+    # Try Azure Blob Storage first; fall back to local disk
+    file_data = file.read()
+    file_path = _upload_to_blob(file_data, unique_filename)
+
+    if not file_path:
+        # Local disk fallback (dev or if blob not configured)
+        upload_folder = os.path.join(current_app.root_path, 'uploads')
+        os.makedirs(upload_folder, exist_ok=True)
+        local_path = os.path.join(upload_folder, unique_filename)
+        with open(local_path, 'wb') as f:
+            f.write(file_data)
+        file_path = local_path
 
     session_id = request.form.get("session_id")
     case_id = request.form.get("case_id")
@@ -711,6 +783,184 @@ def save_reviewer_checks(case_id):
         return jsonify({"error": "Failed to save checks."}), 500
     finally:
         conn.close()
+
+
+# ═══════════════════════════════════════════════════
+# Escalation API
+# ═══════════════════════════════════════════════════
+
+@api_bp.post("/case/<case_id>/escalate")
+@require_admin
+def escalate_case(case_id):
+    """Record an escalation for a case. Updates case status to 'Escalated'."""
+    data = request.get_json(silent=True) or {}
+    escalated_to_email = data.get("escalated_to_email", "").strip()
+    escalated_to_name = data.get("escalated_to_name", "").strip()
+    escalation_notes = data.get("escalation_notes", "").strip()
+    escalation_type = data.get("escalation_type", "SME Review").strip()
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO Escalations (case_id, escalated_to_email, escalated_to_name,
+                escalation_notes, escalation_type, status)
+            VALUES (?, ?, ?, ?, ?, 'Pending')
+        """, (case_id, escalated_to_email or None, escalated_to_name or None,
+              escalation_notes or None, escalation_type))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"escalate_case insert failed: {e}")
+        return jsonify({"error": "Failed to record escalation."}), 500
+    finally:
+        conn.close()
+
+    # Transition case status to Escalated
+    transition_status(case_id, "Escalated")
+
+    return jsonify({
+        "status": "success",
+        "case_id": case_id,
+        "message": f"Case escalated for {escalation_type}. Record saved.",
+    })
+
+
+@api_bp.get("/case/<case_id>/escalation")
+@require_admin
+def get_escalation(case_id):
+    """Get the escalation record for a case."""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"escalation": None})
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, case_id, escalated_to_email, escalated_to_name,
+                   escalation_notes, escalation_type, status, resolution_notes, created_at
+            FROM Escalations WHERE case_id = ?
+            ORDER BY created_at DESC
+        """, (case_id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"escalation": None})
+        return jsonify({"escalation": {
+            "id": row.id, "case_id": row.case_id,
+            "escalated_to_email": row.escalated_to_email,
+            "escalated_to_name": row.escalated_to_name,
+            "escalation_notes": row.escalation_notes,
+            "escalation_type": row.escalation_type,
+            "status": row.status,
+            "resolution_notes": row.resolution_notes,
+            "created_at": str(row.created_at) if row.created_at else None,
+        }})
+    except Exception as e:
+        logger.error(f"get_escalation failed: {e}")
+        return jsonify({"escalation": None})
+    finally:
+        conn.close()
+
+
+# ═══════════════════════════════════════════════════
+# Knowledge Base API
+# ═══════════════════════════════════════════════════
+
+@api_bp.get("/admin/knowledge")
+@require_admin
+def get_knowledge():
+    """Return all active knowledge base entries."""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"entries": []})
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, entry_type, entry_key, title, content, is_active, created_at
+            FROM KnowledgeBase ORDER BY entry_type, entry_key
+        """)
+        entries = [{"id": r.id, "entry_type": r.entry_type, "entry_key": r.entry_key,
+                    "title": r.title, "content": r.content, "is_active": bool(r.is_active),
+                    "created_at": str(r.created_at) if r.created_at else None}
+                   for r in cursor.fetchall()]
+        return jsonify({"entries": entries})
+    except Exception as e:
+        logger.error(f"get_knowledge failed: {e}")
+        return jsonify({"entries": []})
+    finally:
+        conn.close()
+
+
+@api_bp.post("/admin/knowledge")
+@require_admin
+def upsert_knowledge():
+    """Create or update a knowledge base entry."""
+    data = request.get_json(silent=True) or {}
+    entry_key = data.get("entry_key", "").strip()
+    entry_type = data.get("entry_type", "course").strip()
+    title = data.get("title", "").strip()
+    content = data.get("content", "").strip()
+
+    if not title or not content:
+        return jsonify({"error": "title and content are required"}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    try:
+        cursor = conn.cursor()
+        if entry_key:
+            cursor.execute("""
+                MERGE KnowledgeBase AS target
+                USING (VALUES (?, ?, ?, ?, 1)) AS source (entry_key, entry_type, title, content, is_active)
+                ON target.entry_key = source.entry_key
+                WHEN MATCHED THEN UPDATE SET title=source.title, content=source.content,
+                    entry_type=source.entry_type, is_active=1, updated_at=GETDATE()
+                WHEN NOT MATCHED THEN INSERT (entry_key, entry_type, title, content, is_active)
+                    VALUES (source.entry_key, source.entry_type, source.title, source.content, 1);
+            """, (entry_key, entry_type, title, content))
+        else:
+            cursor.execute("""
+                INSERT INTO KnowledgeBase (entry_type, title, content)
+                VALUES (?, ?, ?)
+            """, (entry_type, title, content))
+        conn.commit()
+        return jsonify({"status": "success", "message": "Entry saved."})
+    except Exception as e:
+        logger.error(f"upsert_knowledge failed: {e}")
+        return jsonify({"error": "Failed to save entry."}), 500
+    finally:
+        conn.close()
+
+
+@api_bp.delete("/admin/knowledge/<int:entry_id>")
+@require_admin
+def delete_knowledge(entry_id):
+    """Soft-delete a knowledge base entry."""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE KnowledgeBase SET is_active=0, updated_at=GETDATE() WHERE id=?", (entry_id,))
+        conn.commit()
+        return jsonify({"status": "success", "message": "Entry removed."})
+    except Exception as e:
+        logger.error(f"delete_knowledge failed: {e}")
+        return jsonify({"error": "Failed to delete entry."}), 500
+    finally:
+        conn.close()
+
+
+# ═══════════════════════════════════════════════════
+# Session Messages (for page-refresh recovery)
+# ═══════════════════════════════════════════════════
+
+@api_bp.get("/session/<session_id>/messages")
+def get_session_messages(session_id):
+    """Returns messages for a session. Used by frontend session recovery on page refresh."""
+    messages = get_message_history(session_id)
+    return jsonify({"messages": messages, "session_id": session_id})
 
 
 # ═══════════════════════════════════════════════════

@@ -15,6 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════
     // 0. State
     // ═══════════════════════════════════════════════════
+    // Echo avatar — inline SVG, no CDN dependency
+    const ECHO_AVATAR = `<div class="avatar-small bg-ai"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg></div>`;
+
     let sessionId = localStorage.getItem('cpl_session_id');
     if (!sessionId) {
         sessionId = 'session_' + crypto.randomUUID().slice(0, 12);
@@ -148,11 +151,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('popstate', () => navigateTo(window.location.pathname, false));
 
-    // Sidebar toggle
+    // Left sidebar toggle
     const sidebarToggle = document.getElementById('sidebar-toggle');
     const appContainer = document.querySelector('.app-container');
     if (sidebarToggle && appContainer) {
         sidebarToggle.addEventListener('click', () => appContainer.classList.toggle('collapsed'));
+    }
+
+    // Record sidebar (chat screen right panel) collapse toggle
+    const recordSidebarToggle = document.getElementById('record-sidebar-toggle');
+    const recordSidebar = document.getElementById('record-sidebar');
+    if (recordSidebarToggle && recordSidebar) {
+        recordSidebarToggle.addEventListener('click', () => {
+            const isCollapsed = recordSidebar.classList.toggle('collapsed');
+            recordSidebarToggle.querySelector('i').className = isCollapsed
+                ? 'ph ph-caret-left'
+                : 'ph ph-caret-right';
+        });
     }
 
     // Nav item clicks
@@ -192,16 +207,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Loading indicator
         const loadingDiv = document.createElement('div');
         loadingDiv.className = 'message assistant loading-indicator';
-        loadingDiv.innerHTML = `<div class="avatar-small bg-ai"><i class="ph-fill ph-sparkle text-white"></i></div><div class="message-content"><p class="text-muted"><i class="ph ph-spinner ph-spin"></i> Echo is thinking...</p></div>`;
+        loadingDiv.innerHTML = `${ECHO_AVATAR}<div class="message-content"><p class="text-muted"><i class="ph ph-spinner ph-spin"></i> Echo is thinking...</p></div>`;
         chatTranscript.appendChild(loadingDiv);
         chatTranscript.scrollTop = chatTranscript.scrollHeight;
+
+        // (ECHO_AVATAR defined at module scope above)
 
         try {
             const payload = {
                 message: text,
                 session_id: sessionId,
             };
-            // Send identity if we have it
             if (applicantName) payload.applicant_name = applicantName;
             if (studentId) payload.student_id = studentId;
 
@@ -210,60 +226,88 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: getRequestHeaders(),
                 body: JSON.stringify(payload),
             });
-            const data = await response.json();
+
             chatTranscript.removeChild(loadingDiv);
 
-            if (data.error) {
-                showToast(data.error, 'error');
-                return;
-            }
-
-            // Update state from response
-            if (data.case_id) currentCaseId = data.case_id;
-            if (data.completion_pct !== undefined) currentCompletionPct = data.completion_pct;
-
-            // Track identity from extraction
-            if (data.applicant_name && !applicantName) {
-                applicantName = data.applicant_name;
-                localStorage.setItem('cpl_applicant_name', applicantName);
-                updateProfileDisplay();
-            }
-            if (data.student_id && !studentId) {
-                studentId = data.student_id;
-                localStorage.setItem('cpl_student_id', studentId);
-            }
-
-            // Update unsaved content flag
-            chatHasUnsavedContent = !data.draft_saved;
-
-            // Draft saved notification
-            if (data.draft_saved && data.status === 'Draft') {
-                // Show one-time toast when first crossing threshold
-                if (!sessionStorage.getItem(`draft_toast_${sessionId}`)) {
-                    showToast('Draft saved — you can return to this case later.', 'success');
-                    sessionStorage.setItem(`draft_toast_${sessionId}`, '1');
-                }
-            }
-
-            // Update intake sidebar
-            updateIntakeSidebar(data);
-
-            // Render assistant bubble
+            // Create assistant bubble immediately — will fill token by token
             const aiDiv = document.createElement('div');
             aiDiv.className = 'message assistant';
-            aiDiv.innerHTML = `
-                <div class="avatar-small bg-ai"><i class="ph-fill ph-sparkle text-white"></i></div>
-                <div class="message-content"><p>${formatMarkdown(data.answer || 'Sorry, I could not process that.')}</p></div>
-            `;
+            const contentP = document.createElement('p');
+            aiDiv.innerHTML = ECHO_AVATAR;
+            const msgContent = document.createElement('div');
+            msgContent.className = 'message-content';
+            msgContent.appendChild(contentP);
+            aiDiv.appendChild(msgContent);
             chatTranscript.appendChild(aiDiv);
             chatTranscript.scrollTop = chatTranscript.scrollHeight;
 
+            // Read the SSE stream
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let fullAnswer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // keep incomplete line
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const evt = JSON.parse(line.slice(6));
+
+                        if (evt.error) {
+                            showToast(evt.error, 'error');
+                            break;
+                        }
+
+                        if (evt.token) {
+                            fullAnswer += evt.token;
+                            contentP.innerHTML = formatMarkdown(fullAnswer);
+                            chatTranscript.scrollTop = chatTranscript.scrollHeight;
+                        }
+
+                        if (evt.done) {
+                            // Final metadata — update state
+                            if (evt.case_id) currentCaseId = evt.case_id;
+                            if (evt.completion_pct !== undefined) currentCompletionPct = evt.completion_pct;
+
+                            if (evt.applicant_name && !applicantName) {
+                                applicantName = evt.applicant_name;
+                                localStorage.setItem('cpl_applicant_name', applicantName);
+                                updateProfileDisplay();
+                            }
+                            if (evt.student_id && !studentId) {
+                                studentId = evt.student_id;
+                                localStorage.setItem('cpl_student_id', studentId);
+                            }
+
+                            chatHasUnsavedContent = !evt.draft_saved;
+
+                            if (evt.draft_saved && evt.status === 'Draft') {
+                                if (!sessionStorage.getItem(`draft_toast_${sessionId}`)) {
+                                    showToast('Draft saved — you can return to this case later.', 'success');
+                                    sessionStorage.setItem(`draft_toast_${sessionId}`, '1');
+                                }
+                            }
+
+                            updateIntakeSidebar(evt);
+                        }
+                    } catch (parseErr) {
+                        // Ignore malformed SSE lines
+                    }
+                }
+            }
+
         } catch (error) {
-            chatTranscript.removeChild(loadingDiv);
+            if (chatTranscript.contains(loadingDiv)) chatTranscript.removeChild(loadingDiv);
             showToast('Error connecting to backend. Please try again.', 'error');
             const errDiv = document.createElement('div');
             errDiv.className = 'message assistant';
-            errDiv.innerHTML = `<div class="avatar-small bg-ai"><i class="ph-fill ph-sparkle text-white"></i></div><div class="message-content"><p style="color: var(--status-red-text);">Connection error. Please try again.</p></div>`;
+            errDiv.innerHTML = `${ECHO_AVATAR}<div class="message-content"><p style="color: var(--status-red-text);">Connection error. Please try again.</p></div>`;
             chatTranscript.appendChild(errDiv);
         }
     }
@@ -275,6 +319,31 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el('intake-case-status')) el('intake-case-status').innerText = data.status || 'New';
         if (el('intake-target-course')) el('intake-target-course').innerText = data.target_course || '—';
         if (el('intake-case-summary')) el('intake-case-summary').innerText = data.summary || 'Building case from conversation...';
+
+        // Update chat header with case title when course is known
+        const chatHeaderTitle = document.querySelector('.chat-header h2');
+        if (chatHeaderTitle && data.case_id) {
+            const seq = data.case_id.split('-').pop();
+            const course = data.target_course && data.target_course !== '—' ? ` — ${data.target_course}` : '';
+            chatHeaderTitle.innerText = `Case #${seq}${course}`;
+        }
+
+        // Claimed Competencies tags
+        if (data.claimed_competencies) {
+            try {
+                const competencies = typeof data.claimed_competencies === 'string'
+                    ? JSON.parse(data.claimed_competencies)
+                    : data.claimed_competencies;
+                const section = el('intake-competencies-section');
+                const list = el('intake-competencies-list');
+                if (section && list && competencies && competencies.length > 0) {
+                    section.style.display = 'block';
+                    list.innerHTML = competencies.map(c =>
+                        `<span class="competency-tag confirmed">${escapeHtml(c)}</span>`
+                    ).join('');
+                }
+            } catch(e) { /* non-fatal */ }
+        }
 
         // Progress bar
         const pct = data.completion_pct || 0;
@@ -347,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isResumeAttempt && studentId) {
             // Try to find existing draft and navigate to it
-            fetch('/api/cases', { headers: getIdentityHeaders() })
+            fetch('/api/cases', { headers: getRequestHeaders() })
                 .then(r => r.json())
                 .then(data => {
                     const draft = (data.cases || []).find(c => ['Draft', 'In Progress', 'New'].includes(c.status));
@@ -603,7 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const div = document.createElement('div');
                         div.className = `message ${msg.role}`;
                         if (isAI) {
-                            div.innerHTML = `<div class="avatar-small bg-ai"><i class="ph-fill ph-sparkle text-white"></i></div><div class="message-content"><p>${formatMarkdown(msg.content)}</p></div>`;
+                            div.innerHTML = `<div class="avatar-small bg-ai"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg></div><div class="message-content"><p>${formatMarkdown(msg.content)}</p></div>`;
                         } else {
                             const ini = applicantName ? applicantName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'ME';
                             div.innerHTML = `<div class="avatar-small img">${ini}</div><div class="message-content"><p>${escapeHtml(msg.content)}</p></div>`;
@@ -649,7 +718,7 @@ document.addEventListener('DOMContentLoaded', () => {
             caseData.messages.forEach(msg => {
                 const isAI = msg.role === 'assistant';
                 html += `<div class="message ${msg.role}">
-                    <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<i class="ph-fill ph-sparkle text-white"></i>' : 'ST'}</div>
+                    <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg>' : 'ST'}</div>
                     <div class="message-content"><p>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</p></div>
                 </div>`;
             });
@@ -674,6 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusIndex = {
             'New': 0, 'Draft': 1, 'In Progress': 1, 'Ready for Review': 1,
             'Submitted': 2, 'Under Review': 3, 'Revision Requested': 3,
+            'Escalated': 3,
             'Approved': 4, 'Denied': 4,
         };
         const currentStep = statusIndex[caseData.status] ?? 0;
@@ -835,6 +905,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${pct}%
                     </div>
                 </td>
+                <td>
+                    ${c.confidence_score != null
+                        ? `<div class="confidence-score-cell">
+                            <div class="progress-bar-bg small">
+                                <div class="progress-bar-fill ${c.confidence_score >= 70 ? 'green' : c.confidence_score >= 40 ? 'yellow' : ''}" style="width:${c.confidence_score}%;"></div>
+                            </div>
+                            ${c.confidence_score}%
+                           </div>`
+                        : '<span class="text-muted">—</span>'
+                    }
+                </td>
                 <td class="text-sm text-muted">${formatTimestamp(c.updated_at)}</td>
                 <td><button class="btn-icon"><i class="ph ph-caret-right"></i></button></td>
             `;
@@ -929,7 +1010,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const div = document.createElement('div');
                     div.className = `message ${msg.role}`;
                     div.innerHTML = `
-                        <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<i class="ph-fill ph-sparkle text-white"></i>' : (data.applicant_name || 'ST').substring(0, 2).toUpperCase()}</div>
+                        <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg>' : (data.applicant_name || 'ST').substring(0, 2).toUpperCase()}</div>
                         <div class="message-content"><p>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</p></div>
                     `;
                     transcriptBody.appendChild(div);
@@ -998,8 +1079,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const reviewBackBtn = document.getElementById('review-back-btn');
     if (reviewBackBtn) reviewBackBtn.addEventListener('click', () => navigateTo('/admin'));
 
-    const approveBtn = document.querySelector('.review-topbar .btn-primary');
-    const denyBtn = document.querySelector('.review-topbar .btn-secondary.text-danger');
+    const approveBtn = document.getElementById('admin-approve-btn');
+    const denyBtn = document.getElementById('admin-deny-btn');
     const revisionBtn = document.getElementById('request-revision-btn');
 
     async function handleReviewAction(decision) {
@@ -1046,6 +1127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (el('setting-draft-threshold')) el('setting-draft-threshold').value = settings.draft_save_threshold || '30';
             if (el('setting-submit-threshold')) el('setting-submit-threshold').value = settings.submit_threshold || '80';
             if (el('setting-delete-threshold')) el('setting-delete-threshold').value = settings.delete_allowed_below || '50';
+            if (el('setting-system-prompt-addendum')) el('setting-system-prompt-addendum').value = settings.system_prompt_addendum || '';
 
             // Toggles
             const strict = el('toggle-strict-domain');
@@ -1055,7 +1137,78 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.error('Failed to load settings', e);
         }
+        // Load knowledge base entries
+        loadKnowledgeBase();
     }
+
+    // ── Knowledge Base CRUD ────────────────────────────────────────
+    async function loadKnowledgeBase() {
+        const tbody = document.getElementById('kb-table-body');
+        if (!tbody) return;
+        try {
+            const resp = await fetch('/api/admin/knowledge', { headers: getAdminHeaders() });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const entries = data.entries || [];
+            if (entries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted p-4">No entries yet.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = entries.map(e => `
+                <tr>
+                    <td><span class="badge ${e.entry_type === 'course' ? 'blue' : e.entry_type === 'policy' ? 'yellow' : 'gray'}">${e.entry_type}</span></td>
+                    <td class="font-mono text-sm">${e.entry_key || '—'}</td>
+                    <td>${escapeHtml(e.title)}</td>
+                    <td class="text-sm text-muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(e.content)}">${escapeHtml(e.content.substring(0, 80))}${e.content.length > 80 ? '…' : ''}</td>
+                    <td><button class="btn-icon text-danger" onclick="deleteKBEntry(${e.id})"><i class="ph ph-trash"></i></button></td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            console.error('Failed to load knowledge base', e);
+        }
+    }
+
+    window.deleteKBEntry = async function(id) {
+        try {
+            const resp = await fetch(`/api/admin/knowledge/${id}`, { method: 'DELETE', headers: getAdminHeaders() });
+            if (resp.ok) { showToast('Entry removed.', 'success'); loadKnowledgeBase(); }
+            else showToast('Failed to remove entry.', 'error');
+        } catch(e) { showToast('Failed to remove entry.', 'error'); }
+    };
+
+    document.getElementById('kb-add-btn')?.addEventListener('click', () => {
+        const form = document.getElementById('kb-add-form');
+        if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    });
+
+    document.getElementById('kb-cancel-btn')?.addEventListener('click', () => {
+        const form = document.getElementById('kb-add-form');
+        if (form) form.style.display = 'none';
+    });
+
+    document.getElementById('kb-refresh-btn')?.addEventListener('click', loadKnowledgeBase);
+
+    document.getElementById('kb-save-btn')?.addEventListener('click', async () => {
+        const entry = {
+            entry_type: document.getElementById('kb-new-type')?.value || 'course',
+            entry_key: document.getElementById('kb-new-key')?.value?.trim() || '',
+            title: document.getElementById('kb-new-title')?.value?.trim() || '',
+            content: document.getElementById('kb-new-content')?.value?.trim() || '',
+        };
+        if (!entry.title || !entry.content) { showToast('Title and content are required.', 'warning'); return; }
+        try {
+            const resp = await fetch('/api/admin/knowledge', {
+                method: 'POST',
+                headers: getAdminHeaders(),
+                body: JSON.stringify(entry),
+            });
+            if (resp.ok) {
+                showToast('Entry saved.', 'success');
+                document.getElementById('kb-add-form').style.display = 'none';
+                loadKnowledgeBase();
+            } else showToast('Failed to save entry.', 'error');
+        } catch(e) { showToast('Failed to save entry.', 'error'); }
+    });
 
     const saveSettingsBtn = document.getElementById('save-settings-btn');
     if (saveSettingsBtn) {
@@ -1068,6 +1221,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 delete_allowed_below: el('setting-delete-threshold')?.value || '50',
                 strict_domain_mode: el('toggle-strict-domain')?.classList.contains('active') ? 'true' : 'false',
                 require_evidence_links: el('toggle-require-evidence')?.classList.contains('active') ? 'true' : 'false',
+                system_prompt_addendum: el('setting-system-prompt-addendum')?.value || '',
             };
 
             try {
@@ -1253,9 +1407,35 @@ document.addEventListener('DOMContentLoaded', () => {
     if (escalateBtn) escalateBtn.addEventListener('click', openEscalationDrawer);
     if (escalationCloseBtn) escalationCloseBtn.addEventListener('click', closeEscalationDrawer);
     if (escalationPrepareBtn) {
-        escalationPrepareBtn.addEventListener('click', () => {
-            showToast('Escalation prepared (email integration pending).', 'info');
-            closeEscalationDrawer();
+        escalationPrepareBtn.addEventListener('click', async () => {
+            const caseId = window.currentReviewCaseId;
+            if (!caseId) return showToast('No case selected.', 'warning');
+
+            const payload = {
+                escalation_type: document.getElementById('escalation-type')?.value || 'SME Review',
+                escalated_to_name: document.getElementById('escalation-to-name')?.value?.trim() || '',
+                escalated_to_email: document.getElementById('escalation-email')?.value?.trim() || '',
+                escalation_notes: document.getElementById('escalation-notes')?.value?.trim() || '',
+            };
+
+            try {
+                const resp = await fetch(`/api/case/${caseId}/escalate`, {
+                    method: 'POST',
+                    headers: getAdminHeaders(),
+                    body: JSON.stringify(payload),
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    showToast(data.message || 'Escalation recorded.', 'success');
+                    closeEscalationDrawer();
+                    fetchAdminCases();
+                    navigateTo('/admin');
+                } else {
+                    showToast(data.error || 'Failed to record escalation.', 'error');
+                }
+            } catch (e) {
+                showToast('Failed to record escalation.', 'error');
+            }
         });
     }
 
@@ -1374,10 +1554,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function formatMarkdown(text) {
-        return text
+        if (!text) return '';
+        // Bold and italic
+        let result = text
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/\n/g, '<br>');
+            .replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+        // Numbered lists: lines starting with "1. ", "2. " etc.
+        result = result.replace(/((?:^\d+\.\s+.+(?:\n|$))+)/gm, (match) => {
+            const items = match.trim().split('\n').map(line =>
+                `<li>${line.replace(/^\d+\.\s+/, '')}</li>`
+            ).join('');
+            return `<ol>${items}</ol>`;
+        });
+
+        // Bullet lists: lines starting with "- " or "• "
+        result = result.replace(/((?:^[-•]\s+.+(?:\n|$))+)/gm, (match) => {
+            const items = match.trim().split('\n').map(line =>
+                `<li>${line.replace(/^[-•]\s+/, '')}</li>`
+            ).join('');
+            return `<ul>${items}</ul>`;
+        });
+
+        // Paragraph breaks (double newline) → paragraph gap
+        result = result.replace(/\n\n+/g, '</p><p>');
+        // Single newlines → <br>
+        result = result.replace(/\n/g, '<br>');
+
+        return result;
     }
 
     function formatTimestampShort(ts) {
@@ -1392,6 +1596,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'New': 'gray', 'Draft': 'gray', 'In Progress': 'blue',
             'Ready for Review': 'blue', 'Submitted': 'blue',
             'Under Review': 'yellow', 'Revision Requested': 'yellow',
+            'Escalated': 'orange',
             'Approved': 'green', 'Denied': 'red',
         };
         return map[status] || 'gray';
@@ -1473,7 +1678,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             div.className = `message ${msg.role}`;
                             const isAI = msg.role === 'assistant';
                             div.innerHTML = `
-                                <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<i class="ph-fill ph-sparkle text-white"></i>' : (applicantName || 'ME').substring(0, 2).toUpperCase()}</div>
+                                <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg>' : (applicantName || 'ME').substring(0, 2).toUpperCase()}</div>
                                 <div class="message-content"><p>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</p></div>
                             `;
                             chatTranscript.appendChild(div);
@@ -1483,7 +1688,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Try to restore case data
                     if (savedStudentId) {
-                        const casesResp = await fetch('/api/cases', { headers: getIdentityHeaders() });
+                        const casesResp = await fetch('/api/cases', { headers: getRequestHeaders() });
                         if (casesResp.ok) {
                             const casesData = await casesResp.json();
                             const activeCase = (casesData.cases || []).find(c =>
