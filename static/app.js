@@ -919,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                 </td>
-                <td class="admin-applicant-name" style="max-width:160px;">${escapeHtml(c.target_course || '—')}</td>
+                <td style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.target_course || '—')}</td>
                 <td><span class="badge ${badgeClass}" style="white-space:nowrap;">${c.status}</span></td>
                 <td>
                     <div class="flex-align-center gap-2 text-sm">
