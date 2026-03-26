@@ -15,8 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════
     // 0. State
     // ═══════════════════════════════════════════════════
-    // Echo avatar — inline SVG, no CDN dependency
-    const ECHO_AVATAR = `<div class="avatar-small bg-ai"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg></div>`;
+    // Echo avatar — Eve-inspired inline SVG (oval head + pill eyes), no CDN dependency
+    const ECHO_AVATAR = `<div class="avatar-small bg-ai"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="10" cy="10.5" rx="7" ry="8" fill="rgba(255,255,255,0.12)" stroke="white" stroke-width="1.4"/><rect x="4.5" y="9" width="4" height="2.5" rx="1.25" fill="white"/><rect x="11.5" y="9" width="4" height="2.5" rx="1.25" fill="white"/></svg></div>`;
 
     let sessionId = localStorage.getItem('cpl_session_id');
     if (!sessionId) {
@@ -224,10 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatTranscript.scrollTop = chatTranscript.scrollHeight;
 
         try {
-            const payload = {
-                message: text,
-                session_id: sessionId,
-            };
+            const payload = { message: text, session_id: sessionId };
             if (applicantName) payload.applicant_name = applicantName;
             if (studentId) payload.student_id = studentId;
 
@@ -236,47 +233,85 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: getRequestHeaders(),
                 body: JSON.stringify(payload),
             });
-            const data = await response.json();
-            chatTranscript.removeChild(loadingDiv);
 
-            if (data.error) {
-                showToast(data.error, 'error');
-                return;
+            // Swap loading indicator for the assistant bubble
+            chatTranscript.removeChild(loadingDiv);
+            const aiDiv = document.createElement('div');
+            aiDiv.className = 'message assistant';
+            const msgContent = document.createElement('div');
+            msgContent.className = 'message-content';
+            const textP = document.createElement('p');
+            msgContent.appendChild(textP);
+            aiDiv.innerHTML = ECHO_AVATAR;
+            aiDiv.appendChild(msgContent);
+            chatTranscript.appendChild(aiDiv);
+
+            // Consume SSE stream token-by-token
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let fullAnswer = '';
+            let doneEvt = null;
+
+            streamLoop: while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // hold back incomplete last line
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const evt = JSON.parse(line.slice(6));
+                        if (evt.error) {
+                            showToast(evt.error, 'error');
+                            textP.style.color = 'var(--status-red-text)';
+                            textP.innerText = evt.error;
+                            break streamLoop;
+                        }
+                        if (evt.token) {
+                            fullAnswer += evt.token;
+                            textP.innerHTML = formatMarkdown(fullAnswer);
+                            chatTranscript.scrollTop = chatTranscript.scrollHeight;
+                        }
+                        if (evt.done) {
+                            doneEvt = evt;
+                            break streamLoop;
+                        }
+                    } catch (_) { /* skip malformed SSE lines */ }
+                }
             }
 
-            // Update state from response
-            if (data.case_id) currentCaseId = data.case_id;
-            if (data.completion_pct !== undefined) currentCompletionPct = data.completion_pct;
+            if (!fullAnswer && !doneEvt) {
+                textP.innerText = 'Sorry, I could not process that.';
+            }
 
-            if (data.applicant_name && !applicantName) {
-                applicantName = data.applicant_name;
+            // Apply state from the final done event
+            const meta = doneEvt || {};
+            if (meta.case_id) currentCaseId = meta.case_id;
+            if (meta.completion_pct !== undefined) currentCompletionPct = meta.completion_pct;
+            if (meta.applicant_name && !applicantName) {
+                applicantName = meta.applicant_name;
                 localStorage.setItem('cpl_applicant_name', applicantName);
                 updateProfileDisplay();
             }
-            if (data.student_id && !studentId) {
-                studentId = data.student_id;
+            if (meta.student_id && !studentId) {
+                studentId = meta.student_id;
                 localStorage.setItem('cpl_student_id', studentId);
             }
-
-            chatHasUnsavedContent = !data.draft_saved;
-
-            if (data.draft_saved && data.status === 'Draft') {
+            chatHasUnsavedContent = !meta.draft_saved;
+            if (meta.draft_saved && meta.status === 'Draft') {
                 if (!sessionStorage.getItem(`draft_toast_${sessionId}`)) {
                     showToast('Draft saved — you can return to this case later.', 'success');
                     sessionStorage.setItem(`draft_toast_${sessionId}`, '1');
                 }
             }
-
-            updateIntakeSidebar(data);
-
-            const aiDiv = document.createElement('div');
-            aiDiv.className = 'message assistant';
-            aiDiv.innerHTML = `${ECHO_AVATAR}<div class="message-content"><p>${formatMarkdown(data.answer || 'Sorry, I could not process that.')}</p></div>`;
-            chatTranscript.appendChild(aiDiv);
-            chatTranscript.scrollTop = chatTranscript.scrollHeight;
+            if (meta.case_id) updateIntakeSidebar(meta);
 
         } catch (error) {
-            chatTranscript.removeChild(loadingDiv);
+            if (chatTranscript.contains(loadingDiv)) chatTranscript.removeChild(loadingDiv);
             showToast('Error connecting to backend. Please try again.', 'error');
             const errDiv = document.createElement('div');
             errDiv.className = 'message assistant';
@@ -1274,6 +1309,44 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modal) modal.style.display = 'none';
     }
 
+    function resetStudentSession() {
+        // Clear any draft toast flag for the current session before changing session ID
+        sessionStorage.removeItem(`draft_toast_${sessionId}`);
+
+        // Generate a fresh session ID
+        const newSessionId = 'session_' + crypto.randomUUID().slice(0, 12);
+
+        // Reset localStorage identity — existing DB records are untouched
+        localStorage.removeItem('cpl_applicant_name');
+        localStorage.removeItem('cpl_student_id');
+        localStorage.setItem('cpl_session_id', newSessionId);
+
+        // Reset in-memory state
+        sessionId = newSessionId;
+        applicantName = '';
+        studentId = '';
+        currentCaseId = null;
+        currentCompletionPct = 0;
+        chatHasUnsavedContent = false;
+
+        // Clear chat transcript
+        if (chatTranscript) chatTranscript.innerHTML = '';
+
+        // Reset intake sidebar to blank state
+        updateIntakeSidebar({ case_id: '—', status: 'New', completion_pct: 0, can_submit: false });
+
+        // Update profile display to anonymous
+        updateProfileDisplay();
+
+        // Close modal and return to home
+        hideAdminLoginModal();
+        navigateTo('/');
+
+        showToast('Student session reset. Ready for a fresh demo.', 'success');
+    }
+
+    document.getElementById('reset-student-btn')?.addEventListener('click', resetStudentSession);
+
     async function attemptAdminLogin() {
         const email = document.getElementById('admin-login-email')?.value?.trim() || '';
         const password = document.getElementById('admin-login-password')?.value || '';
@@ -1557,12 +1630,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return result;
     }
 
-    function formatTimestampShort(ts) {
-        try {
-            const d = new Date(ts);
-            return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-        } catch { return ts; }
-    }
+
 
     function getBadgeClass(status) {
         const map = {

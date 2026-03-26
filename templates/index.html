@@ -24,20 +24,22 @@
         <nav class="sidebar">
             <div class="sidebar-header">
                 <div class="brand">
-                    <!-- Custom SVG Gradient Logo -->
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="url(#gradient-brand)"
-                        xmlns="http://www.w3.org/2000/svg">
+                    <!-- NUPathway Path Arc Logo — ascending journey from experience to credit -->
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <defs>
-                            <linearGradient id="gradient-brand" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <linearGradient id="gradient-brand" x1="0%" y1="100%" x2="100%" y2="0%">
                                 <stop offset="0%" stop-color="#8B5CF6" />
                                 <stop offset="100%" stop-color="#EC4899" />
                             </linearGradient>
                         </defs>
-                        <path d="M12 2L2 7L12 12L22 7L12 2Z" />
-                        <path d="M2 17L12 22L22 17" stroke="url(#gradient-brand)" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" fill="none" />
-                        <path d="M2 12L12 17L22 12" stroke="url(#gradient-brand)" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round" fill="none" />
+                        <!-- Ascending curved path arc -->
+                        <path d="M3 21 C5 15 12 9 21 3" stroke="url(#gradient-brand)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                        <!-- Origin: filled circle (prior experience / starting point) -->
+                        <circle cx="3" cy="21" r="2.2" fill="url(#gradient-brand)"/>
+                        <!-- Midpoint milestone dot -->
+                        <circle cx="12" cy="12" r="1.5" fill="url(#gradient-brand)" opacity="0.65"/>
+                        <!-- Destination: diamond/compass point (academic recognition) -->
+                        <path d="M21 0.5 L22.3 3 L21 5.5 L19.7 3 Z" fill="url(#gradient-brand)"/>
                     </svg>
                     <span class="sidebar-text">NUPathway</span>
                 </div>
@@ -577,8 +579,8 @@
                                 </div>
 
                                 <h4>Reviewer Notes</h4>
-                                <textarea class="w-full mt-2" rows="5" id="review-notes-input"
-                                    placeholder="Add private notes or justification here..."></textarea>
+                                <textarea class="input-field w-full mt-2" rows="5" id="review-notes-input"
+                                    placeholder="Add private notes or justification here..." style="resize: vertical; font-family: var(--font-sans);"></textarea>
 
                                 <div class="reviewer-actions mt-3" style="display: flex; flex-direction: column; gap: 8px;">
                                     <label class="checkbox-label">
@@ -756,6 +758,13 @@
             <div class="modal-footer">
                 <button class="btn-secondary" id="admin-login-cancel">Cancel</button>
                 <button class="btn-primary" id="admin-login-submit"><i class="ph ph-sign-in"></i> Sign In</button>
+            </div>
+            <div style="border-top: 1px solid var(--border-subtle); padding: 0.75rem 1.5rem; background: var(--bg-surface-hover); border-radius: 0 0 var(--radius-xl) var(--radius-xl);">
+                <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Demo Tools</p>
+                <button class="btn-secondary full-width" id="reset-student-btn" style="font-size: 0.8rem; justify-content: center;">
+                    <i class="ph ph-arrow-counter-clockwise"></i> Reset Student Session
+                </button>
+                <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.4rem 0 0; text-align: center;">Clears browser identity only. Existing cases stay in the DB.</p>
             </div>
         </div>
     </div>

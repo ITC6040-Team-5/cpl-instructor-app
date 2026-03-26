@@ -880,7 +880,7 @@ button:active {
     box-shadow: var(--shadow-md);
     padding: 1.25rem;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 1rem;
     transition: all var(--transition-bounce);
 }
@@ -2308,9 +2308,20 @@ button:disabled {
     justify-content: center;
 }
 
-/* ── V2: Chat message density ─────────────────────────────────────── */
+/* ── V2: Chat message density + alignment ─────────────────────────── */
 .chat-transcript {
     gap: 0.5rem;
+}
+
+/* Align avatar with top of message content, not stretched/centered */
+.message {
+    align-items: flex-start;
+}
+
+/* Assistant messages have no bubble background — remove vertical padding waste */
+.message.assistant .message-content {
+    padding-top: 0.2rem;
+    padding-bottom: 0;
 }
 
 .message-content p {
@@ -2576,4 +2587,86 @@ button:disabled {
 
 .timeline-step.escalated:not(:last-child)::before {
     background-color: #FED7AA;
+}
+
+/* ==========================================================================
+   NU Red Branding Accents (Northeastern institutional identity)
+   Used only at structural/border positions — never as fills on text or backgrounds
+   ========================================================================== */
+:root {
+    --nu-red: #CC0000;
+    --nu-red-subtle: rgba(204, 0, 0, 0.07);
+    --nu-red-border: rgba(204, 0, 0, 0.25);
+}
+
+/* Active nav item — left border indicator */
+.nav-item.active {
+    border-left: 3px solid var(--nu-red);
+    padding-left: calc(0.75rem - 3px);
+}
+
+/* Case list items that are in active/submitted states */
+.case-list-item:hover {
+    border-color: var(--nu-red);
+    box-shadow: 0 4px 12px rgba(204, 0, 0, 0.08);
+}
+
+/* Admin Case Record pane — left accent border */
+.review-record {
+    border-left: 3px solid var(--nu-red);
+}
+
+/* Status badge — Submitted (NU Red tint) */
+.badge.submitted-badge {
+    background-color: var(--nu-red-subtle);
+    color: var(--nu-red);
+    border-color: var(--nu-red-border);
+}
+
+/* Submit for Review button — NU Red when enabled */
+#submit-for-review-btn:not(:disabled) {
+    background-color: var(--nu-red);
+    border-color: var(--nu-red);
+}
+
+#submit-for-review-btn:not(:disabled):hover {
+    background-color: #aa0000;
+    box-shadow: 0 4px 12px rgba(204, 0, 0, 0.25);
+}
+
+/* Progress bar — NU Red when at submit threshold */
+.progress-bar-fill.red {
+    background: var(--nu-red);
+}
+
+/* Admin queue tab active indicator */
+.tab.active {
+    border-bottom-color: var(--nu-red);
+    color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Typography Consistency Fix
+   ========================================================================== */
+
+/* Form elements must inherit font from the design system, not browser defaults */
+textarea,
+input,
+select {
+    font-family: var(--font-sans);
+}
+
+/* Standardize page-level section titles */
+.content-header h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* Standardize pane/card headers in admin review */
+.pane-header h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
 }
