@@ -1,0 +1,87 @@
+                <!-- 6. Admin Case Review Screen -->
+                <section id="admin-review-screen" class="screen-view">
+                    <div class="review-topbar flex-between mb-4">
+                        <div class="review-title flex-align-center gap-3">
+                            <button class="btn-icon" id="review-back-btn"><i class="ph ph-arrow-left"></i></button>
+                            <div>
+                                <h2 class="mb-0" id="review-applicant-name">—</h2>
+                                <p class="text-sm text-muted font-mono mb-0" id="review-case-subhead">—</p>
+                            </div>
+                        </div>
+                        <div class="review-actions-bar">
+                            <button class="btn-outline-danger" id="admin-deny-btn"><i class="ph ph-x"></i> Deny</button>
+                            <button class="btn-secondary" id="request-revision-btn"><i class="ph ph-arrow-counter-clockwise"></i> Request Revision</button>
+                            <button class="btn-secondary" id="admin-escalate-btn"><i class="ph ph-arrow-up-right"></i> Escalate</button>
+                            <button class="btn-primary" id="admin-approve-btn"><i class="ph ph-check"></i> Approve Credit</button>
+                        </div>
+                    </div>
+
+                    <div class="case-review-layout">
+                        <!-- Pane 1: Structured Record -->
+                        <div class="pane review-record card p-0">
+                            <div class="pane-header card-header border-bottom p-4 flex-between">
+                                <h3 class="mb-0">Case Record</h3>
+                                <span class="badge green">AI Generated</span>
+                            </div>
+                            <div class="review-record-content p-4" id="review-case-record-body">
+                                <div class="field-item">
+                                    <label>Summary</label>
+                                    <p id="review-case-summary" class="text-muted">Select a case to view details.</p>
+                                </div>
+                                <hr class="subtle">
+                                <div class="field-item">
+                                    <label>Target Course</label>
+                                    <p id="review-target-course">—</p>
+                                </div>
+                                <hr class="subtle">
+                                <div class="field-item">
+                                    <label>AI Confidence</label>
+                                    <p id="review-confidence">—</p>
+                                </div>
+                                <hr class="subtle">
+                                <div class="field-item">
+                                    <label>Status</label>
+                                    <p id="review-case-status">—</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pane 2: Transcript Audit -->
+                        <div class="pane review-transcript card p-0">
+                            <div class="pane-header card-header border-bottom p-4 flex-between">
+                                <h3 class="mb-0">Intake Transcript</h3>
+                                <span class="text-sm text-muted">Read-only audit log</span>
+                            </div>
+                            <div class="transcript-content chat-transcript compact" id="review-transcript-body">
+                                <!-- Dynamic: populated from /api/case/<id>/messages -->
+                                <p class="text-muted p-4">Select a case to view the conversation transcript.</p>
+                            </div>
+                        </div>
+
+                        <!-- Pane 3: Evidence & Notes -->
+                        <div class="pane review-evidence card p-0 bg-gray">
+                            <div class="pane-header card-header border-bottom p-4 flex-between">
+                                <h3 class="mb-0">Evidence & Review</h3>
+                            </div>
+                            <div class="evidence-content p-4 h-full">
+                                <h4>Files</h4>
+                                <div class="mini-file-list mb-4" id="review-evidence-list">
+                                    <p class="text-muted text-sm">No evidence files attached.</p>
+                                </div>
+
+                                <h4>Reviewer Notes</h4>
+                                <textarea class="input-field w-full mt-2" rows="5" id="review-notes-input"
+                                    placeholder="Add private notes or justification here..." style="resize: vertical; font-family: var(--font-sans);"></textarea>
+
+                                <div class="reviewer-actions mt-3" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="check-rubric-assessed"> Assessed against institutional rubric
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="check-identity-verified"> Identity verified
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
