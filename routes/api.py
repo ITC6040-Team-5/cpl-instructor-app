@@ -371,6 +371,7 @@ def _apply_thresholds(case_data, session_id):
         "applicant_name": case_data.get("applicant_name"),
         "student_id": case_data.get("student_id"),
         "claimed_competencies": case_data.get("claimed_competencies"),
+        "confidence_score": case_data.get("confidence_score"),
         "can_submit": pct >= submit_threshold,
         "draft_saved": status != "New",
     }
@@ -596,6 +597,7 @@ def get_case(case_id):
         "status": case.get("status"),
         "completion_pct": case.get("completion_pct", 0),
         "confidence_score": case.get("confidence_score"),
+        "claimed_competencies": case.get("claimed_competencies"),
         "summary": case.get("summary") or "No summary generated yet.",
         "reviewer_notes": case.get("reviewer_notes"),
         "session_id": case.get("session_id"),
