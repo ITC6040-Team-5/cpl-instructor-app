@@ -15,8 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════
     // 0. State
     // ═══════════════════════════════════════════════════
-    // Echo avatar — soundwave SVG (no CDN dependency)
-    const ECHO_AVATAR = `<div class="avatar-small bg-ai"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="2" fill="white"/><circle cx="10" cy="10" r="5" stroke="white" stroke-width="1.2" fill="none" opacity="0.6"/><circle cx="10" cy="10" r="8" stroke="white" stroke-width="1" fill="none" opacity="0.3"/></svg></div>`;
+    // Echo avatar — 4-pointed star on sienna→gold gradient (no CDN dependency)
+    const ECHO_AVATAR = `<div class="echo-avatar"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.8 5.2 L12 7 L7.8 8.8 L7 13 L6.2 8.8 L2 7 L6.2 5.2 Z" fill="white" opacity="0.95"/></svg></div>`;
 
     let sessionId = localStorage.getItem('cpl_session_id');
     if (!sessionId) {
@@ -136,10 +136,10 @@ document.addEventListener('DOMContentLoaded', () => {
             footer.style.transform = path === '/chat' ? 'translateY(0)' : 'translateY(10px)';
         }
 
-        // Chat screen: zero out screens-container padding so split-layout fills viewport
+        // Chat + admin review screens: zero out container padding so layouts fill viewport
         const screensContainer = document.querySelector('.screens-container');
         if (screensContainer) {
-            if (path === '/chat') {
+            if (path === '/chat' || path.startsWith('/admin/review')) {
                 screensContainer.style.padding = '0';
                 screensContainer.style.overflow = 'hidden';
             } else {
@@ -149,11 +149,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Route-entry hooks
-        if (path === '/') renderRecentCasesStrip();
-        if (path === '/cases') fetchApplicantCases();
+        if (path === '/') { renderRecentCasesStrip(); exitSessionMode(); }
+        if (path === '/cases') { fetchApplicantCases(); exitSessionMode(); }
         if (path === '/admin') { fetchAdminCases(); switchToReviewerNav(); }
         if (path === '/admin/settings') { loadSettingsTab(); switchToReviewerNav(); }
         if (path === '/' || path === '/chat' || path === '/cases') switchToApplicantNav();
+        // On /chat restore session context if case is active
+        if (path === '/chat' && currentCaseId) {
+            enterSessionMode(currentCaseId, applicantName);
+        }
 
         // Update topbar nav active state
         renderTopbarNav(path.startsWith('/admin') ? 'reviewer' : 'applicant', path);
@@ -205,28 +209,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatSendBtn = document.getElementById('chat-send');
     const chatTranscript = document.getElementById('intake-chat');
 
-    async function appendUserMessage(text) {
+    async function appendScriptMessage(text) {
         if (!text.trim()) return;
 
-        // Render user bubble
-        const initials = applicantName ? applicantName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'ME';
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'message user';
-        msgDiv.innerHTML = `
-            <div class="avatar-small img">${initials}</div>
-            <div class="message-content"><p>${escapeHtml(text)}</p></div>
+        // Render user message as theatrical script row
+        const speakerLabel = applicantName ? applicantName.split(' ')[0].toUpperCase() : 'YOU';
+        const userRow = document.createElement('div');
+        userRow.className = 'script-message';
+        userRow.innerHTML = `
+            <div class="script-speaker user">${escapeHtml(speakerLabel)}</div>
+            <div class="script-prose">${escapeHtml(text)}</div>
         `;
-        chatTranscript.appendChild(msgDiv);
+        chatTranscript.appendChild(userRow);
         chatInput.value = '';
         chatInput.style.height = 'auto';
         chatTranscript.scrollTop = chatTranscript.scrollHeight;
 
-        // Loading indicator
-        const loadingDiv = document.createElement('div');
-        loadingDiv.className = 'message assistant loading-indicator';
-        loadingDiv.innerHTML = `${ECHO_AVATAR}<div class="message-content"><p class="text-muted"><i class="ph ph-spinner ph-spin"></i> Echo is thinking...</p></div>`;
-        chatTranscript.appendChild(loadingDiv);
+        // Loading indicator — script row with typing animation
+        const loadingRow = document.createElement('div');
+        loadingRow.className = 'script-message';
+        loadingRow.innerHTML = `
+            <div class="script-speaker echo">ECHO</div>
+            <div class="script-prose"><span class="script-typing">● RESPONDING</span></div>
+        `;
+        chatTranscript.appendChild(loadingRow);
         chatTranscript.scrollTop = chatTranscript.scrollHeight;
+
+        // Disable send button while waiting
+        if (chatSendBtn) chatSendBtn.disabled = true;
 
         try {
             const payload = { message: text, session_id: sessionId };
@@ -239,17 +249,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(payload),
             });
 
-            // Swap loading indicator for the assistant bubble
-            chatTranscript.removeChild(loadingDiv);
-            const aiDiv = document.createElement('div');
-            aiDiv.className = 'message assistant';
-            const msgContent = document.createElement('div');
-            msgContent.className = 'message-content';
-            const textP = document.createElement('div'); // div not p — marked outputs block HTML
-            msgContent.appendChild(textP);
-            aiDiv.innerHTML = ECHO_AVATAR;
-            aiDiv.appendChild(msgContent);
-            chatTranscript.appendChild(aiDiv);
+            // Swap loading row for Echo's script response row
+            chatTranscript.removeChild(loadingRow);
+            const echoRow = document.createElement('div');
+            echoRow.className = 'script-message';
+            const echoSpeaker = document.createElement('div');
+            echoSpeaker.className = 'script-speaker echo';
+            echoSpeaker.textContent = 'ECHO';
+            const proseEl = document.createElement('div');
+            proseEl.className = 'script-prose';
+            echoRow.appendChild(echoSpeaker);
+            echoRow.appendChild(proseEl);
+            chatTranscript.appendChild(echoRow);
 
             // Consume SSE stream token-by-token
             const reader = response.body.getReader();
@@ -272,13 +283,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         const evt = JSON.parse(line.slice(6));
                         if (evt.error) {
                             showToast(evt.error, 'error');
-                            textP.style.color = 'var(--status-red-text)';
-                            textP.innerText = evt.error;
+                            proseEl.style.color = 'var(--color-denied)';
+                            proseEl.innerText = evt.error;
                             break streamLoop;
                         }
                         if (evt.token) {
                             fullAnswer += evt.token;
-                            textP.innerHTML = formatMarkdown(fullAnswer);
+                            proseEl.innerHTML = formatMarkdown(fullAnswer);
                             chatTranscript.scrollTop = chatTranscript.scrollHeight;
                         }
                         if (evt.done) {
@@ -290,8 +301,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (!fullAnswer && !doneEvt) {
-                textP.innerText = 'Sorry, I could not process that.';
+                proseEl.innerText = 'Sorry, I could not process that.';
             }
+
+            // Manila highlight — emerges 600ms after stream completes
+            setTimeout(() => {
+                echoRow.querySelectorAll('.manila').forEach(el => el.classList.add('active'));
+            }, 600);
 
             // Apply state from the final done event
             const meta = doneEvt || {};
@@ -301,6 +317,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 applicantName = meta.applicant_name;
                 localStorage.setItem('cpl_applicant_name', applicantName);
                 updateProfileDisplay();
+                updateUserAvatar(applicantName);
+                // Update studio context bar + session context
+                enterSessionMode(meta.case_id, meta.applicant_name);
             }
             if (meta.student_id && !studentId) {
                 studentId = meta.student_id;
@@ -313,17 +332,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     sessionStorage.setItem(`draft_toast_${sessionId}`, '1');
                 }
             }
-            if (meta.case_id) updateIntakeSidebar(meta);
+            if (meta.case_id) {
+                updateIntakeSidebar(meta);
+                enterSessionMode(meta.case_id, meta.applicant_name || applicantName);
+            }
 
         } catch (error) {
-            if (chatTranscript.contains(loadingDiv)) chatTranscript.removeChild(loadingDiv);
+            if (chatTranscript.contains(loadingRow)) chatTranscript.removeChild(loadingRow);
             showToast('Error connecting to backend. Please try again.', 'error');
-            const errDiv = document.createElement('div');
-            errDiv.className = 'message assistant';
-            errDiv.innerHTML = `${ECHO_AVATAR}<div class="message-content"><p style="color: var(--status-red-text);">Connection error. Please try again.</p></div>`;
-            chatTranscript.appendChild(errDiv);
+            const errRow = document.createElement('div');
+            errRow.className = 'script-message';
+            errRow.innerHTML = `
+                <div class="script-speaker echo">ECHO</div>
+                <div class="script-prose" style="color: var(--color-denied);">Connection error. Please try again.</div>
+            `;
+            chatTranscript.appendChild(errRow);
+        } finally {
+            if (chatSendBtn) chatSendBtn.disabled = false;
         }
     }
+
+    // Keep old name as alias for backward compat with any remaining call sites
+    const appendUserMessage = appendScriptMessage;
 
     function updateIntakeSidebar(data) {
         const el = (id) => document.getElementById(id);
@@ -360,10 +390,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) { /* non-fatal */ }
         }
 
-        // Progress bar
+        // Progress bar — update both old sidebar (if present) and new insight rail footer
         const pct = data.completion_pct || 0;
-        const progressFill = document.querySelector('.record-footer .progress-bar-fill');
-        const progressText = document.querySelector('.record-footer .progress-text');
+        const progressFill = document.getElementById('studio-progress-fill') || document.querySelector('.record-footer .progress-bar-fill');
+        const progressText = document.getElementById('studio-progress-text') || document.querySelector('.record-footer .progress-text');
         if (progressFill) progressFill.style.width = pct + '%';
         if (progressText) progressText.innerText = pct + '% Complete';
 
@@ -377,22 +407,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function openInsightRail(competencies, data) {
         const rail = document.getElementById('insight-rail');
-        const content = document.getElementById('insight-rail-content');
+        const content = document.getElementById('insight-cards-container');
         if (!rail || !content || !competencies || competencies.length === 0) return;
 
         const cards = [];
         // Course card
         if (data && data.target_course && data.target_course !== '—') {
-            cards.push(`<div class="insight-card">
-                <div class="insight-card-label">Course</div>
-                <div class="insight-card-value">${escapeHtml(data.target_course)}</div>
+            cards.push(`<div class="insight-card-v3">
+                <div class="insight-card-category">Course<span class="insight-conf-badge">IDENTIFIED</span></div>
+                <div class="insight-card-body">${escapeHtml(data.target_course)}</div>
             </div>`);
         }
         // Competency cards
-        competencies.forEach(c => {
-            cards.push(`<div class="insight-card">
-                <div class="insight-card-label">Competency</div>
-                <div class="insight-card-value">${escapeHtml(c)}</div>
+        competencies.forEach((c, i) => {
+            cards.push(`<div class="insight-card-v3">
+                <div class="insight-card-category">Competency<span class="insight-conf-badge">EXTRACTED</span></div>
+                <div class="insight-card-body">${escapeHtml(c)}</div>
             </div>`);
         });
 
@@ -597,38 +627,44 @@ document.addEventListener('DOMContentLoaded', () => {
             container.innerHTML = '';
 
             if (!data.cases || data.cases.length === 0) {
-                container.innerHTML = `<div class="text-center text-muted p-4">
-                    <i class="ph ph-folder-open" style="font-size: 2rem;"></i>
-                    <p class="mt-2">No cases yet. Start a conversation to create your first case.</p>
-                </div>`;
+                container.innerHTML = `
+                    <div class="docket-card-v3" style="cursor:pointer;border-style:dashed;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:160px;gap:0.5rem;"
+                         onclick="navigateTo('/chat')">
+                        <span style="font-size:1.5rem;color:var(--color-border);">+</span>
+                        <span style="font-family:var(--font-display);font-style:italic;color:var(--color-muted);font-size:0.95rem;">Start your first evaluation</span>
+                    </div>
+                `;
                 return;
             }
 
             data.cases.forEach((c, idx) => {
-                const badgeClass = getBadgeClass(c.status);
                 const pct = c.completion_pct || 0;
-                const ts = c.created_at ? formatTimestamp(c.created_at) : '';
+                const courseName = c.target_course || 'Untitled case';
                 const div = document.createElement('div');
-                div.className = 'case-list-item';
+                div.className = 'docket-card-v3';
                 div.innerHTML = `
-                    <div class="case-list-left">
-                        <div class="case-index">Case ${c.index || idx + 1}</div>
-                        <div class="case-info">
-                            <strong>${c.target_course || 'Building case...'}</strong>
-                            <span class="text-sm text-muted">${ts}</span>
-                        </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+                        <span class="docket-id">${escapeHtml(c.case_id)}</span>
+                        <span class="badge ${getBadgeClass(c.status)}" style="font-size:10px;">${escapeHtml(c.status)}</span>
                     </div>
-                    <div class="case-list-right">
-                        <div class="progress-bar-bg small" style="width: 60px;" title="${pct}% complete">
-                            <div class="progress-bar-fill ${pct >= 80 ? 'green' : pct >= 30 ? 'yellow' : ''}" style="width: ${pct}%;"></div>
-                        </div>
-                        <span class="badge ${badgeClass}">${c.status}</span>
-                        <i class="ph ph-caret-right text-muted"></i>
+                    <div class="docket-name">${escapeHtml(courseName)}</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--color-muted);margin-bottom:0.75rem;">${c.created_at ? formatTimestamp(c.created_at) : ''}</div>
+                    <div class="progress-bar-track" style="height:3px;">
+                        <div class="progress-bar-fill" style="width:${pct}%;height:3px;"></div>
                     </div>
+                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--color-muted);margin-top:0.25rem;">${pct}% complete</div>
                 `;
                 div.addEventListener('click', () => loadCaseDetail(c.case_id, c.index || idx + 1));
                 container.appendChild(div);
             });
+
+            // New Case card at the end
+            const newCard = document.createElement('div');
+            newCard.className = 'docket-card-v3';
+            newCard.style.cssText = 'cursor:pointer;border-style:dashed;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:160px;gap:0.5rem;';
+            newCard.innerHTML = `<span style="font-size:1.5rem;color:var(--color-border);">+</span><span style="font-family:var(--font-display);font-style:italic;color:var(--color-muted);font-size:0.9rem;">New evaluation</span>`;
+            newCard.addEventListener('click', () => navigateTo('/chat'));
+            container.appendChild(newCard);
         } catch (e) {
             console.error('Failed to fetch cases', e);
             showToast('Failed to load cases.', 'error');
@@ -753,15 +789,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (detail.messages) {
                     detail.messages.forEach(msg => {
                         const isAI = msg.role === 'assistant';
-                        const div = document.createElement('div');
-                        div.className = `message ${msg.role}`;
-                        if (isAI) {
-                            div.innerHTML = `${ECHO_AVATAR}<div class="message-content"><div>${formatMarkdown(msg.content)}</div></div>`;
-                        } else {
-                            const ini = applicantName ? applicantName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'ME';
-                            div.innerHTML = `<div class="avatar-small img">${ini}</div><div class="message-content"><p>${escapeHtml(msg.content)}</p></div>`;
-                        }
-                        chatTranscript.appendChild(div);
+                        const row = document.createElement('div');
+                        row.className = 'script-message';
+                        const speaker = isAI ? 'ECHO' : (applicantName ? applicantName.split(' ')[0].toUpperCase() : 'YOU');
+                        const speakerClass = isAI ? 'echo' : 'user';
+                        row.innerHTML = `
+                            <div class="script-speaker ${speakerClass}">${escapeHtml(speaker)}</div>
+                            <div class="script-prose">${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div>
+                        `;
+                        chatTranscript.appendChild(row);
                     });
                     chatTranscript.scrollTop = chatTranscript.scrollHeight;
                 }
@@ -771,8 +807,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     completion_pct: detail.completion_pct,
                     target_course: detail.target_course,
                     summary: detail.summary,
+                    claimed_competencies: detail.claimed_competencies,
                     can_submit: (detail.completion_pct || 0) >= 80,
                 });
+                if (detail.case_id) enterSessionMode(detail.case_id, detail.applicant_name || applicantName);
 
                 // Restore evidence list from DB (shows files even after page refresh)
                 if (detail.evidence && detail.evidence.length > 0) {
@@ -963,17 +1001,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         container.innerHTML = cases.map(c => {
             const conf = c.confidence_score != null ? Math.round(c.confidence_score) : null;
-            return `<div class="docket-card" onclick="openAdminReview('${escapeHtml(c.case_id)}')">
-                <div class="docket-card-header">
-                    <span class="docket-id">${escapeHtml(c.case_id)}</span>
-                    <span class="badge ${getBadgeClass(c.status)}">${escapeHtml(c.status)}</span>
+            const pct = Math.round(c.completion_pct || 0);
+            return `<div class="docket-card-v3" onclick="openAdminReview('${escapeHtml(c.case_id)}')">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+                    <span class="docket-card-id">${escapeHtml(c.case_id)}</span>
+                    <span class="badge ${getBadgeClass(c.status)}" style="font-size:10px;">${escapeHtml(c.status)}</span>
                 </div>
-                <div class="docket-name">${escapeHtml(c.applicant_name || '—')}</div>
-                <div class="docket-course">${escapeHtml(c.target_course || 'Course TBD')}</div>
-                <div class="docket-meta">
-                    <span class="docket-completion">${Math.round(c.completion_pct || 0)}%</span>
-                    ${conf !== null ? `<span class="docket-conf">AI ${conf}%</span>` : ''}
+                <div class="docket-card-name">${escapeHtml(c.applicant || c.applicant_name || '—')}</div>
+                <div class="docket-card-course">${escapeHtml(c.target_course || 'Course TBD')}</div>
+                <div style="margin-top:0.75rem;">
+                    <div class="progress-bar-track" style="height:3px;margin-bottom:0.25rem;">
+                        <div class="progress-bar-fill" style="width:${pct}%;height:3px;"></div>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span style="font-family:var(--font-mono);font-size:10px;color:var(--color-muted);">${pct}%</span>
+                        ${conf !== null ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--color-approved);background:var(--color-approved-bg);border-radius:var(--radius-xs);padding:1px 5px;">AI ${conf}%</span>` : ''}
+                    </div>
                 </div>
+                <span class="docket-card-arrow">↗</span>
             </div>`;
         }).join('');
     }
@@ -1169,7 +1214,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             _allAdminCases = data.cases || [];
             updateAdminTabs();
-            renderAdminTable();
+            // Default to card view — switch to card grid
+            _currentQueueView = 'card';
+            const listView = document.getElementById('queue-list-view');
+            const cardView = document.getElementById('queue-card-view');
+            if (listView) listView.style.display = 'none';
+            if (cardView) { cardView.style.display = 'grid'; }
+            const viewBtns = document.querySelectorAll('#queue-view-toggle .view-btn');
+            viewBtns.forEach(b => b.classList.toggle('active', b.dataset.view === 'card'));
+            renderAdminCards();
+            // Populate stats sidebar
+            const total = _allAdminCases.length;
+            const needsReview = _allAdminCases.filter(c => ['Submitted', 'Under Review'].includes(c.status)).length;
+            const confScores = _allAdminCases.filter(c => c.confidence_score != null).map(c => c.confidence_score);
+            const avgConf = confScores.length ? Math.round(confScores.reduce((a,b) => a+b, 0) / confScores.length) : null;
+            const statTotal = document.getElementById('stat-total');
+            const statNR = document.getElementById('stat-needs-review');
+            const statConf = document.getElementById('stat-avg-conf');
+            if (statTotal) statTotal.textContent = total;
+            if (statNR) statNR.textContent = needsReview;
+            if (statConf) statConf.textContent = avgConf !== null ? avgConf + '%' : '—';
         } catch (e) {
             console.error('Failed to fetch admin cases', e);
             tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted p-4">Failed to load cases.</td></tr>`;
@@ -1183,11 +1247,15 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('#admin-queue-tabs .tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         _adminFilter = tab.dataset.filter || 'all';
-        renderAdminTable();
+        if (_currentQueueView === 'card') renderAdminCards();
+        else renderAdminTable();
     });
 
     // Search handler
-    document.getElementById('admin-search-input')?.addEventListener('input', () => renderAdminTable());
+    document.getElementById('admin-search-input')?.addEventListener('input', () => {
+        if (_currentQueueView === 'card') renderAdminCards();
+        else renderAdminTable();
+    });
 
     // Sort handler
     document.querySelectorAll('#admin-cases-table th.sortable')?.forEach(th => {
@@ -1206,6 +1274,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    function renderLifecycleTimeline(status, createdAt) {
+        const steps = [
+            { label: 'Case Created', sub: createdAt ? formatTimestamp(createdAt) : null },
+            { label: 'Intake & Evidence', sub: null },
+            { label: 'Submitted for Review', sub: null },
+            { label: 'Under Review', sub: null },
+            { label: 'Decision', sub: null },
+        ];
+        const statusOrder = ['New','Draft','In Progress','Ready for Review','Submitted','Under Review','Revision Requested','Escalated','Approved','Denied'];
+        const idx = statusOrder.indexOf(status);
+        const activeStep = idx >= 8 ? 4 : idx >= 5 ? 3 : idx >= 4 ? 2 : idx >= 1 ? 1 : 0;
+
+        const html = steps.map((step, i) => {
+            const done = i < activeStep;
+            const current = i === activeStep;
+            const variant = current && status === 'Revision Requested' ? 'revision'
+                          : current && status === 'Escalated' ? 'escalated'
+                          : current && status === 'Approved' ? 'approved'
+                          : current && status === 'Denied' ? 'denied' : '';
+            return `<div class="lifecycle-step${done ? ' done' : ''}${current ? ' current' : ''}${variant ? ' ' + variant : ''}">
+                <div class="lifecycle-dot"></div>
+                <div class="lifecycle-content">
+                    <div class="lifecycle-label">${step.label}</div>
+                    ${step.sub ? `<div class="lifecycle-sub">${step.sub}</div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+        return `<div class="lifecycle-title">EVALUATION LIFECYCLE</div>${html}`;
+    }
+
     async function openAdminReview(caseId) {
         window.currentReviewCaseId = caseId;
         navigateTo('/admin/review');
@@ -1217,28 +1315,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const el = (id) => document.getElementById(id);
             if (el('review-applicant-name')) el('review-applicant-name').innerText = data.applicant_name || 'Unknown';
+            if (el('review-applicant-name-detail')) el('review-applicant-name-detail').innerText = data.applicant_name || '—';
             if (el('review-case-subhead')) el('review-case-subhead').innerText = `${data.case_id} • ${data.target_course || '—'}`;
+            if (el('review-case-subhead-transcript')) el('review-case-subhead-transcript').innerText = `${data.case_id} • ${data.target_course || '—'}`;
+            if (el('review-case-id-label')) el('review-case-id-label').innerText = data.case_id || '—';
+            if (el('review-meta-completion')) el('review-meta-completion').innerText = `${data.completion_pct || 0}%`;
+            // Lifecycle timeline
+            const lifecycleEl = el('review-lifecycle');
+            if (lifecycleEl) lifecycleEl.innerHTML = renderLifecycleTimeline(data.status, data.created_at);
             if (el('review-case-summary')) el('review-case-summary').innerText = data.summary || 'No summary available.';
             if (el('review-target-course')) el('review-target-course').innerText = data.target_course || '—';
             if (el('review-confidence')) el('review-confidence').innerText = data.confidence_score ? `${data.confidence_score}%` : '—';
             if (el('review-case-status')) el('review-case-status').innerText = data.status || '—';
 
-            // Transcript
+            // Transcript — script format
             const transcriptBody = document.getElementById('review-transcript-body');
             if (transcriptBody && data.messages) {
-                transcriptBody.innerHTML = data.messages.length === 0
-                    ? '<p class="text-muted p-4">No transcript available.</p>'
-                    : '';
-                data.messages.forEach(msg => {
-                    const isAI = msg.role === 'assistant';
-                    const div = document.createElement('div');
-                    div.className = `message ${msg.role}`;
-                    div.innerHTML = `
-                        <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg>' : (data.applicant_name || 'ST').substring(0, 2).toUpperCase()}</div>
-                        <div class="message-content"><div>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div></div>
-                    `;
-                    transcriptBody.appendChild(div);
-                });
+                if (data.messages.length === 0) {
+                    transcriptBody.innerHTML = '<p class="text-muted p-4" style="font-style:italic;">No transcript available.</p>';
+                } else {
+                    transcriptBody.className = 'script-transcript';
+                    transcriptBody.innerHTML = '';
+                    data.messages.forEach(msg => {
+                        const isAI = msg.role === 'assistant';
+                        const row = document.createElement('div');
+                        row.className = 'script-message';
+                        const studentLabel = (data.applicant_name || 'Student').split(' ')[0].toUpperCase();
+                        row.innerHTML = `
+                            <div class="script-speaker ${isAI ? 'echo' : 'user'}">${isAI ? 'ECHO' : escapeHtml(studentLabel)}</div>
+                            <div class="script-prose">${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div>
+                        `;
+                        transcriptBody.appendChild(row);
+                    });
+                }
             }
 
             // Evidence
@@ -1532,6 +1641,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (profileRole) profileRole.innerText = 'Reviewer';
         const switchLabel = document.getElementById('role-switch-label');
         if (switchLabel) switchLabel.innerText = 'Switch to Applicant';
+        // Hide sidebar on admin routes — nav lives in topbar
+        appContainer.classList.add('admin-mode');
+        appContainer.classList.remove('applicant-mode');
         renderTopbarNav('reviewer', window.location.pathname);
     }
 
@@ -1542,6 +1654,10 @@ document.addEventListener('DOMContentLoaded', () => {
         updateProfileDisplay();
         const switchLabel = document.getElementById('role-switch-label');
         if (switchLabel) switchLabel.innerText = 'Switch to Reviewer';
+        // Hide sidebar on applicant routes — nav lives in topbar
+        appContainer.classList.add('applicant-mode');
+        appContainer.classList.remove('admin-mode');
+        exitSessionMode();
         renderTopbarNav('applicant', window.location.pathname);
     }
 
@@ -1551,6 +1667,57 @@ document.addEventListener('DOMContentLoaded', () => {
         if (profileAvatar) profileAvatar.innerText = initials;
         if (profileName) profileName.innerText = name;
         if (profileRole) profileRole.innerText = 'Applicant';
+        updateUserAvatar(applicantName);
+    }
+
+    function updateUserAvatar(name) {
+        const el = document.getElementById('topbar-user-avatar');
+        if (!el) return;
+        if (!name) { el.textContent = '?'; return; }
+        const parts = name.trim().split(' ');
+        const initials = parts.length >= 2
+            ? parts[0][0] + parts[parts.length - 1][0]
+            : parts[0].substring(0, 2);
+        el.textContent = initials.toUpperCase();
+    }
+
+    function enterSessionMode(caseId, studentName) {
+        // Show session context in topbar center, hide nav links
+        const nav = document.getElementById('topbar-nav');
+        const ctx = document.getElementById('session-context');
+        if (nav) nav.style.display = 'none';
+        if (ctx) {
+            ctx.style.display = 'flex';
+            const idEl = ctx.querySelector('.session-id');
+            const nameEl = ctx.querySelector('.session-name');
+            if (idEl && caseId) idEl.textContent = caseId;
+            if (nameEl && studentName) nameEl.textContent = studentName;
+        }
+        // Update studio context bar inside the chat screen
+        const studioBar = document.getElementById('studio-context-bar');
+        const studioId = document.getElementById('studio-bar-case-id');
+        const studioName = document.getElementById('studio-bar-student-name');
+        if (studioBar) studioBar.style.display = 'flex';
+        if (studioId && caseId) studioId.textContent = caseId;
+        if (studioName && studentName) studioName.textContent = studentName;
+    }
+
+    function exitSessionMode() {
+        const nav = document.getElementById('topbar-nav');
+        const ctx = document.getElementById('session-context');
+        if (nav) nav.style.display = '';
+        if (ctx) ctx.style.display = 'none';
+    }
+
+    // Gear dropdown toggle
+    const gearBtn = document.getElementById('gear-btn');
+    const gearDropdown = document.getElementById('gear-dropdown');
+    if (gearBtn && gearDropdown) {
+        gearBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            gearDropdown.classList.toggle('open');
+        });
+        document.addEventListener('click', () => gearDropdown.classList.remove('open'));
     }
 
     // Admin login modal logic

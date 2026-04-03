@@ -20,17 +20,10 @@
     <!-- App Container -->
     <div class="app-container">
 
-        <!-- Left Sidebar Navigator -->
+        <!-- Left Sidebar Navigator (hidden on applicant/admin routes via JS applicant-mode/admin-mode class) -->
         <nav class="sidebar">
             <div class="sidebar-header">
-                <div class="brand">
-                    <svg width="22" height="22" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M14 2 L25 8 L25 20 L14 26 L3 20 L3 8 Z" fill="#E8662A"/>
-                        <line x1="9" y1="14" x2="19" y2="14" stroke="#F9F7F1" stroke-width="1.5" stroke-linecap="round"/>
-                    </svg>
-                    <span class="sidebar-text" style="font-family:var(--font-sans);font-weight:700;letter-spacing:-0.01em;">the Studio</span>
-                </div>
-                <!-- Toggle Button -->
+                <!-- Brand moved to topbar; sidebar header kept for collapse toggle only -->
                 <button class="btn-icon-subtle toggle-sidebar" id="sidebar-toggle" aria-label="Toggle Sidebar">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
@@ -101,29 +94,7 @@
                     </ul>
                 </div>
 
-                <div class="nav-section mt-4">
-                    <div class="nav-section-title sidebar-text text-muted">System Links</div>
-                    <ul class="nav-list">
-                        <li>
-                            <a href="/system/config" class="nav-item" target="_blank">
-                                <i class="ph ph-wrench text-muted"></i>
-                                <span class="sidebar-text text-muted">Config Status</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="/health" class="nav-item" target="_blank">
-                                <i class="ph ph-heartbeat text-muted"></i>
-                                <span class="sidebar-text text-muted">Health Check</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="/dbcheck" class="nav-item" target="_blank">
-                                <i class="ph ph-database text-muted"></i>
-                                <span class="sidebar-text text-muted">DB Check</span>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
+                <!-- System links moved to gear dropdown in topbar (A1) -->
             </div>
 
             <!-- User Footer in Sidebar -->
@@ -146,21 +117,42 @@
         <main class="workspace">
             <!-- Top Header -->
             <header class="topbar">
-                <div class="topbar-left" style="display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
-                    <div class="breadcrumbs" id="dynamic-breadcrumb" style="display:none;"></div>
-                    <!-- Primary nav — rendered by renderTopbarNav() in app.js -->
-                    <nav id="topbar-nav" class="topbar-nav"></nav>
+                <!-- Left: Brand -->
+                <div class="topbar-left">
+                    <a href="/" class="topbar-brand" onclick="event.preventDefault(); navigateTo('/');">
+                        <i class="ph-fill ph-hexagon" style="font-size:20px;color:var(--color-primary);"></i>
+                        <span class="topbar-brand-name">the Studio</span>
+                    </a>
                 </div>
-                <div class="topbar-center">
-                    <div class="search-bar">
+
+                <!-- Center: Nav links OR session context -->
+                <nav id="topbar-nav" class="topbar-nav"></nav>
+                <div id="session-context" class="session-context" style="display:none;">
+                    <span class="session-id font-mono"></span>
+                    <span class="session-sep">·</span>
+                    <span class="session-name"></span>
+                </div>
+
+                <!-- Right: Search + actions -->
+                <div class="topbar-right">
+                    <div class="search-bar" style="width:280px;">
                         <i class="ph ph-magnifying-glass"></i>
                         <input type="text" id="global-search-input" placeholder="Search by student ID or case ID...">
                         <span class="shortcut">⌘K</span>
                     </div>
-                </div>
-                <div class="topbar-right">
-                    <button class="btn-icon"><i class="ph ph-bell"></i></button>
-                    <button class="btn-primary" id="primary-action-btn">New Case</button>
+                    <button class="btn-icon" id="notif-btn" title="Notifications"><i class="ph ph-bell"></i></button>
+                    <!-- Gear dropdown — system admin links -->
+                    <div class="gear-dropdown-wrapper">
+                        <button class="btn-icon" id="gear-btn" title="System tools"><i class="ph ph-gear"></i></button>
+                        <div class="gear-dropdown" id="gear-dropdown">
+                            <a href="/system/config" target="_blank" class="gear-item">Config Status</a>
+                            <a href="/health" target="_blank" class="gear-item">Health Check</a>
+                            <a href="/dbcheck" target="_blank" class="gear-item">DB Check</a>
+                            <a href="/versions" target="_blank" class="gear-item">Versions</a>
+                        </div>
+                    </div>
+                    <div class="topbar-user-avatar" id="topbar-user-avatar" title="Student profile">?</div>
+                    <button class="btn-primary" id="primary-action-btn" style="display:none;">New Case</button>
                 </div>
             </header>
 
@@ -217,107 +209,76 @@
                     </div>
                 </section>
 
-                <!-- 2. Guided Intake Screen -->
-                <section id="intake-screen" class="screen-view">
-                    <div class="split-layout">
-                        <!-- Chat Column -->
-                        <div class="chat-column">
-                            <div class="chat-header">
-                                <h2>New Evaluation</h2>
-                                <span class="badge gray">Echo AI Assistant</span>
+                <!-- 2. Guided Intake Screen — Theatrical Studio Layout -->
+                <section id="intake-screen" class="screen-view" style="padding:0;">
+                    <div class="studio-layout">
+
+                        <!-- Script Column (left ~68%) -->
+                        <div class="script-column">
+                            <!-- Session context bar (case ID + student name, hidden until known) -->
+                            <div class="studio-context-bar" id="studio-context-bar" style="display:none;">
+                                <span class="studio-case-id" id="studio-bar-case-id"></span>
+                                <span class="studio-sep">·</span>
+                                <span id="studio-bar-student-name"></span>
                             </div>
 
-                            <div class="chat-transcript" id="intake-chat">
-                                <!-- Dynamic: messages rendered by app.js -->
+                            <!-- Theatrical transcript -->
+                            <div class="script-transcript" id="intake-chat">
+                                <!-- Messages rendered by appendScriptMessage() in app.js -->
                             </div>
 
-                            <!-- Floating Input Composer -->
-                            <div class="composer-area">
-                                <div class="composer-box">
-                                    <button class="btn-icon-subtle" id="chat-attach-btn" title="Attach evidence file"><svg width="20" height="20" viewBox="0 0 24 24"
-                                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <path
-                                                d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48">
-                                            </path>
-                                        </svg></button>
-                                    <textarea placeholder="Type your response to the assistant..."
-                                        id="chat-input" autocomplete="off" rows="1"></textarea>
-                                    <button class="btn-send" id="chat-send">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                                            stroke-linejoin="round">
-                                            <line x1="12" y1="19" x2="12" y2="5"></line>
-                                            <polyline points="5 12 12 5 19 12"></polyline>
-                                        </svg>
-                                    </button>
-                                </div>
+                            <!-- Composer — borderless, Newsreader italic placeholder -->
+                            <div class="script-composer">
+                                <button class="btn-icon-subtle" id="chat-attach-btn" title="Attach evidence">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                                    </svg>
+                                </button>
+                                <textarea id="chat-input" placeholder="Ask a follow-up question…" rows="1" autocomplete="off"></textarea>
+                                <button class="script-send-btn" id="chat-send" disabled>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="12" y1="19" x2="12" y2="5"></line>
+                                        <polyline points="5 12 12 5 19 12"></polyline>
+                                    </svg>
+                                </button>
                             </div>
                         </div>
 
-                        <!-- Record Sidebar (Tabbed) -->
-                        <div class="record-sidebar" id="record-sidebar" style="position: relative;">
-                        <button class="sidebar-collapse-btn" id="record-sidebar-toggle" title="Toggle case record">
-                            <i class="ph ph-caret-right"></i>
-                        </button>
-                            <div class="record-header">
-                                <div class="record-tabs">
-                                    <button class="record-tab active" data-tab="case-record-tab">Case Record</button>
-                                    <button class="record-tab" data-tab="evidence-tab">Evidence</button>
-                                </div>
-                                <button class="btn-icon text-muted"><i class="ph ph-arrows-out-simple"></i></button>
+                        <!-- Insight Rail (right, starts at 0 width, expands to 32%) -->
+                        <aside class="insight-rail" id="insight-rail">
+                            <div class="insight-rail-header">DETECTED INSIGHTS</div>
+                            <div class="insight-cards-list" id="insight-cards-container">
+                                <p class="text-sm text-muted" style="padding:1rem;font-style:italic;">Insights will appear as the session progresses.</p>
                             </div>
-
-                            <!-- Tab: Case Record -->
-                            <div class="record-tab-content active" id="case-record-tab">
-                                <div class="record-content" id="intake-case-record">
-                                    <div class="field-group">
-                                        <label>Target Course</label>
-                                        <div class="field-value" id="intake-target-course">—</div>
-                                    </div>
-                                    <div class="field-group">
-                                        <label>Case ID</label>
-                                        <div class="field-value font-mono" id="intake-case-id">—</div>
-                                    </div>
-                                    <div class="field-group">
-                                        <label>Status</label>
-                                        <div class="field-value" id="intake-case-status">No active case</div>
-                                    </div>
-                                    <div class="field-group">
-                                        <label>Summary of Experience</label>
-                                        <div class="field-box" id="intake-case-summary">Start a conversation to begin building your case.</div>
-                                    </div>
-                                    <div class="competencies-section" id="intake-competencies-section" style="display:none;">
-                                        <label style="font-size:0.7rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;">Claimed Competencies</label>
-                                        <div class="competencies-list" id="intake-competencies-list"></div>
-                                    </div>
+                            <!-- Footer: progress + evidence + submit -->
+                            <div class="insight-rail-footer">
+                                <div class="progress-bar-track">
+                                    <div class="progress-bar-fill" id="studio-progress-fill" style="width:0%;"></div>
                                 </div>
-                            </div>
-
-                            <!-- Tab: Evidence -->
-                            <div class="record-tab-content" id="evidence-tab">
-                                <div class="record-content">
-                                    <div class="mini-dropzone">
-                                        <i class="ph ph-cloud-arrow-up"></i>
-                                        <span>Drop files here or <a href="#">browse</a></span>
-                                    </div>
-                                    <div class="field-group mt-3">
-                                        <label>Attached Files</label>
-                                        <div class="compact-file-list" id="intake-evidence-list">
-                                            <p class="text-sm text-muted">No files uploaded yet.</p>
-                                        </div>
-                                    </div>
+                                <div class="progress-text" id="studio-progress-text" style="font-size:var(--text-xs);color:var(--color-muted);margin-top:4px;">0% Complete</div>
+                                <!-- Hidden data fields kept for JS compatibility -->
+                                <div style="display:none;">
+                                    <div id="intake-target-course"></div>
+                                    <div id="intake-case-id"></div>
+                                    <div id="intake-case-status"></div>
+                                    <div id="intake-case-summary"></div>
+                                    <div id="intake-competencies-list"></div>
+                                    <div id="intake-competencies-section"></div>
+                                    <div id="intake-case-record"></div>
                                 </div>
-                            </div>
-
-                            <div class="record-footer">
-                                <div class="progress-bar-bg">
-                                    <div class="progress-bar-fill" style="width: 0%;"></div>
-                                </div>
-                                <div class="progress-text">0% Complete</div>
+                                <div class="compact-file-list mt-2" id="intake-evidence-list"></div>
                                 <button class="btn-primary full-width mt-3" id="submit-for-review-btn" disabled title="Case must reach 80% completion">Submit for Review</button>
                             </div>
+                        </aside>
+
+                        <!-- Hidden mini-dropzone kept for file attach JS trigger -->
+                        <div style="display:none;">
+                            <div class="mini-dropzone" id="mini-dropzone-trigger">
+                                <i class="ph ph-cloud-arrow-up"></i>
+                                <span>Drop files here or <a href="#">browse</a></span>
+                            </div>
                         </div>
+
                     </div>
                 </section>
 
@@ -381,10 +342,9 @@
                             </div>
                         </div>
 
-                        <!-- Insight Rail — grows as Echo extracts competencies -->
-                        <aside id="insight-rail" class="insight-rail">
+                        <!-- Evidence screen insight rail (unused - active one is in Studio screen) -->
+                        <aside class="insight-rail">
                             <div class="insight-rail-header">Extracted Insights</div>
-                            <div id="insight-rail-content"></div>
                         </aside>
                     </div>
                 </section>
@@ -393,19 +353,15 @@
                 <section id="case-history-screen" class="screen-view">
                     <div class="content-header flex-between">
                         <div>
-                            <h2>Case History</h2>
-                            <p class="subtitle">View your evaluation cases and their progress.</p>
+                            <h2>Dossiers</h2>
+                            <p class="subtitle">Your evaluation portfolios and their current status.</p>
                         </div>
                     </div>
 
-                    <!-- Case List View -->
+                    <!-- Case List View — Dossier Card Grid -->
                     <div id="case-list-view">
-                        <div class="case-list" id="case-list-container">
+                        <div class="docket-card-grid-v3" id="case-list-container" style="padding:0.25rem 0 1.5rem;">
                             <!-- Dynamic: rendered by app.js from /api/cases -->
-                            <div class="text-center text-muted p-4" id="case-list-empty">
-                                <i class="ph ph-folder-open" style="font-size: 2rem;"></i>
-                                <p class="mt-2">No cases yet. Start a conversation to create your first case.</p>
-                            </div>
                         </div>
                     </div>
 
@@ -460,156 +416,185 @@
                 </section>
 
                 <section id="admin-dashboard-screen" class="screen-view">
-                    <div class="content-header flex-between">
-                        <div>
-                            <h2>Case Queue</h2>
-                            <p class="subtitle">Manage and triage submitted CPL portfolios.</p>
-                        </div>
-                        <div class="actions-row">
-                            <button class="btn-secondary" id="admin-filter-btn"><i class="ph ph-funnel"></i> Filter</button>
-                            <button class="btn-secondary"><i class="ph ph-export"></i> Export</button>
-                        </div>
-                    </div>
+                    <div class="queue-layout">
+                        <!-- Main queue column -->
+                        <div class="queue-main">
+                            <div class="content-header flex-between" style="margin-bottom:1rem;">
+                                <div>
+                                    <h2>Workspaces</h2>
+                                    <p class="subtitle">Manage and triage submitted CPL portfolios.</p>
+                                </div>
+                                <div class="actions-row">
+                                    <button class="btn-secondary"><i class="ph ph-export"></i> Export</button>
+                                </div>
+                            </div>
 
-                    <div class="card p-0 overflow-hidden">
-                        <div class="table-toolbar">
-                            <div class="tabs" id="admin-queue-tabs">
-                                <div class="tab active" data-filter="all">All Cases (0)</div>
-                                <div class="tab" data-filter="needs-review">Needs Review (0)</div>
-                                <div class="tab" data-filter="in-progress">In Progress (0)</div>
-                                <div class="tab" data-filter="completed">Completed (0)</div>
-                            </div>
-                            <div style="display:flex;align-items:center;gap:0.75rem;">
-                                <div class="search-mini" id="admin-search-box">
-                                    <i class="ph ph-magnifying-glass"></i>
-                                    <input type="text" id="admin-search-input" placeholder="Search by name or case ID...">
+                            <div class="card p-0 overflow-hidden">
+                                <div class="table-toolbar">
+                                    <div class="tabs" id="admin-queue-tabs">
+                                        <div class="tab active" data-filter="all">All Cases (0)</div>
+                                        <div class="tab" data-filter="needs-review">Needs Review (0)</div>
+                                        <div class="tab" data-filter="in-progress">In Progress (0)</div>
+                                        <div class="tab" data-filter="completed">Completed (0)</div>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:0.75rem;">
+                                        <div class="search-mini" id="admin-search-box">
+                                            <i class="ph ph-magnifying-glass"></i>
+                                            <input type="text" id="admin-search-input" placeholder="Search by name or case ID...">
+                                        </div>
+                                        <!-- View toggle: card default / list alternate -->
+                                        <div class="view-toggle" id="queue-view-toggle">
+                                            <button class="view-btn" data-view="list" title="List view">
+                                                <i class="ph ph-list"></i>
+                                            </button>
+                                            <button class="view-btn active" data-view="card" title="Card view">
+                                                <i class="ph ph-squares-four"></i>
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                                <!-- View toggle: list / card -->
-                                <div class="view-toggle" id="queue-view-toggle">
-                                    <button class="view-btn active" data-view="list" title="List view">
-                                        <i class="ph ph-list"></i>
-                                    </button>
-                                    <button class="view-btn" data-view="card" title="Card view">
-                                        <i class="ph ph-squares-four"></i>
-                                    </button>
+                                <!-- List view — alternate, hidden by default -->
+                                <div id="queue-list-view" style="display:none;">
+                                    <div class="admin-table-scroll">
+                                        <table class="data-table" id="admin-cases-table">
+                                            <thead>
+                                                <tr>
+                                                    <th class="sortable" data-sort="case_id">Case ID</th>
+                                                    <th class="sortable" data-sort="applicant">Applicant</th>
+                                                    <th class="sortable" data-sort="target_course">Target Course</th>
+                                                    <th class="sortable" data-sort="status">Status</th>
+                                                    <th class="sortable" data-sort="completion_pct">Completion</th>
+                                                    <th class="sortable" data-sort="confidence_score">AI Score</th>
+                                                    <th class="sortable" data-sort="updated_at">Date Updated</th>
+                                                    <th></th>
+                                                    <th title="Delete case"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <!-- Card view — default -->
+                                <div id="queue-card-view" class="docket-card-grid-v3" style="padding:1.25rem;">
+                                    <!-- Dynamic: rendered by renderAdminCards() in app.js -->
                                 </div>
                             </div>
                         </div>
-                        <div id="queue-list-view">
-                        <div class="admin-table-scroll">
-                        <table class="data-table" id="admin-cases-table">
-                            <thead>
-                                <tr>
-                                    <th class="sortable" data-sort="case_id">Case ID</th>
-                                    <th class="sortable" data-sort="applicant">Applicant</th>
-                                    <th class="sortable" data-sort="target_course">Target Course</th>
-                                    <th class="sortable" data-sort="status">Status</th>
-                                    <th class="sortable" data-sort="completion_pct">Completion</th>
-                                    <th class="sortable" data-sort="confidence_score">AI Score</th>
-                                    <th class="sortable" data-sort="updated_at">Date Updated</th>
-                                    <th></th>
-                                    <th title="Delete case"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Dynamic: rendered by app.js from /api/admin/cases -->
-                            </tbody>
-                        </table>
-                        </div>
-                        </div>
-                        <!-- Card view — hidden by default -->
-                        <div id="queue-card-view" class="docket-card-grid" style="display:none;padding:1rem;">
-                            <!-- Dynamic: rendered by renderAdminCards() in app.js -->
-                        </div>
+
+                        <!-- Stats sidebar -->
+                        <aside class="queue-stats">
+                            <div class="stat-block">
+                                <div class="stat-label">TOTAL CASES</div>
+                                <div class="stat-value" id="stat-total">—</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-label">NEEDS REVIEW</div>
+                                <div class="stat-value" id="stat-needs-review">—</div>
+                            </div>
+                            <div class="stat-block">
+                                <div class="stat-label">AVG. CONFIDENCE</div>
+                                <div class="stat-value accent" id="stat-avg-conf">—</div>
+                            </div>
+                        </aside>
                     </div>
                 </section>
 
-                <!-- 6. Admin Case Review Screen -->
-                <section id="admin-review-screen" class="screen-view" style="position:relative;">
-                    <!-- CERTIFY stamp overlay — shown on approve confirmation -->
+                <!-- 6. Admin Case Review Screen — Evaluator Workspace -->
+                <section id="admin-review-screen" class="screen-view" style="position:relative; padding:0;">
+                    <!-- CERTIFY stamp overlay -->
                     <div class="certify-stamp" id="certify-stamp">CERTIFIED</div>
-                    <div class="review-topbar flex-between mb-4">
+
+                    <!-- Minimal topbar: back + case title -->
+                    <div class="review-topbar flex-between" style="padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--color-border); background: var(--color-paper);">
                         <div class="review-title flex-align-center gap-3">
                             <button class="btn-icon" id="review-back-btn"><i class="ph ph-arrow-left"></i></button>
                             <div>
-                                <h2 class="mb-0" id="review-applicant-name">—</h2>
+                                <h2 class="mb-0" style="font-size:1rem;font-family:var(--font-sans);font-weight:600;" id="review-applicant-name">—</h2>
                                 <p class="text-sm text-muted font-mono mb-0" id="review-case-subhead">—</p>
                             </div>
                         </div>
-                        <div class="review-actions-bar">
-                            <button class="btn-outline-danger" id="admin-deny-btn"><i class="ph ph-x"></i> Deny</button>
-                            <button class="btn-secondary" id="request-revision-btn"><i class="ph ph-arrow-counter-clockwise"></i> Request Revision</button>
-                            <button class="btn-secondary" id="admin-escalate-btn"><i class="ph ph-arrow-up-right"></i> Escalate</button>
-                            <button class="btn-primary" id="admin-approve-btn"><i class="ph ph-seal-check"></i> Certify</button>
-                        </div>
                     </div>
 
-                    <div class="case-review-layout">
-                        <!-- Pane 1: Structured Record -->
-                        <div class="pane review-record card p-0">
-                            <div class="pane-header card-header border-bottom p-4 flex-between">
-                                <h3 class="mb-0">Case Record</h3>
-                                <span class="badge green">AI Generated</span>
+                    <!-- 3-pane evaluator workspace -->
+                    <div class="evaluator-workspace">
+                        <!-- Pane 1: Case Reference + Evaluation Lifecycle -->
+                        <div class="review-pane-left" style="overflow-y:auto; padding:1.25rem; border-right: 1px solid var(--color-border);">
+                            <div style="margin-bottom:1rem;">
+                                <div class="lifecycle-title" style="margin-bottom:0.25rem;">CASE REFERENCE</div>
+                                <div class="font-mono" style="font-size:11px;color:var(--color-muted);margin-bottom:0.25rem;" id="review-case-id-label">—</div>
+                                <div style="font-family:var(--font-display);font-weight:700;font-size:1rem;" id="review-case-summary">—</div>
+                                <div class="text-muted" style="font-size:0.85rem;margin-top:0.25rem;" id="review-applicant-name-detail">—</div>
                             </div>
-                            <div class="review-record-content p-4" id="review-case-record-body">
-                                <div class="field-item">
-                                    <label>Summary</label>
-                                    <p id="review-case-summary" class="text-muted">Select a case to view details.</p>
-                                </div>
-                                <hr class="subtle">
-                                <div class="field-item">
-                                    <label>Target Course</label>
-                                    <p id="review-target-course">—</p>
-                                </div>
-                                <hr class="subtle">
-                                <div class="field-item">
-                                    <label>AI Confidence</label>
-                                    <p id="review-confidence">—</p>
-                                </div>
-                                <hr class="subtle">
-                                <div class="field-item">
-                                    <label>Status</label>
-                                    <p id="review-case-status">—</p>
+                            <div class="evaluation-lifecycle" id="review-lifecycle">
+                                <!-- Populated by renderLifecycleTimeline() in app.js -->
+                            </div>
+                            <div style="margin-top:1rem;border-top:1px solid var(--color-border);padding-top:1rem;">
+                                <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                                    <div class="flex-between">
+                                        <span style="font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-muted);">Completion</span>
+                                        <span class="font-mono" style="font-size:0.8rem;" id="review-meta-completion">—</span>
+                                    </div>
+                                    <div class="flex-between">
+                                        <span style="font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-muted);">AI Confidence</span>
+                                        <span class="font-mono" style="font-size:0.8rem;color:var(--color-approved);" id="review-confidence">—</span>
+                                    </div>
+                                    <div class="flex-between">
+                                        <span style="font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-muted);">Status</span>
+                                        <span id="review-case-status" style="font-size:0.8rem;">—</span>
+                                    </div>
+                                    <div class="flex-between">
+                                        <span style="font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-muted);">Target Course</span>
+                                        <span id="review-target-course" style="font-size:0.8rem;">—</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Pane 2: Transcript Audit -->
-                        <div class="pane review-transcript card p-0">
-                            <div class="pane-header card-header border-bottom p-4 flex-between">
-                                <h3 class="mb-0">Intake Transcript</h3>
-                                <span class="text-sm text-muted">Read-only audit log</span>
+                        <!-- Pane 2: Script-Format Transcript (dominant) -->
+                        <div class="review-pane-center" style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--color-border);">
+                            <div style="padding:0.75rem 1.25rem;border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                                <span style="font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--color-muted);">Annotated Transcript</span>
+                                <span class="font-mono" style="font-size:10px;color:var(--color-muted);" id="review-case-subhead-transcript">—</span>
                             </div>
-                            <div class="transcript-content chat-transcript compact" id="review-transcript-body">
-                                <!-- Dynamic: populated from /api/case/<id>/messages -->
-                                <p class="text-muted p-4">Select a case to view the conversation transcript.</p>
+                            <div id="review-transcript-body" class="script-transcript" style="flex:1;overflow-y:auto;padding:1.5rem 2rem 2rem;">
+                                <p class="text-muted" style="font-style:italic;padding:1rem 0;">Select a case to view the conversation transcript.</p>
                             </div>
                         </div>
 
-                        <!-- Pane 3: Evidence & Notes -->
-                        <div class="pane review-evidence card p-0 bg-gray">
-                            <div class="pane-header card-header border-bottom p-4 flex-between">
-                                <h3 class="mb-0">Evidence & Review</h3>
-                            </div>
-                            <div class="evidence-content p-4 h-full">
-                                <h4>Files</h4>
-                                <div class="mini-file-list mb-4" id="review-evidence-list">
+                        <!-- Pane 3: Evidence + Reviewer Notes + Competency Assessment -->
+                        <div class="review-pane-right" style="overflow-y:auto;padding:1.25rem;display:flex;flex-direction:column;gap:1rem;">
+                            <!-- Files -->
+                            <div>
+                                <div class="lifecycle-title" style="margin-bottom:0.5rem;">EVIDENCE</div>
+                                <div id="review-evidence-list" style="font-size:0.85rem;">
                                     <p class="text-muted text-sm">No evidence files attached.</p>
                                 </div>
+                            </div>
 
-                                <h4>Reviewer Notes</h4>
-                                <textarea class="input-field w-full mt-2" rows="5" id="review-notes-input"
-                                    placeholder="Add private notes or justification here..." style="resize: vertical; font-family: var(--font-sans);"></textarea>
-
-                                <div class="reviewer-actions mt-3" style="display: flex; flex-direction: column; gap: 8px;">
-                                    <label class="checkbox-label">
+                            <div style="border-top:1px solid var(--color-border);padding-top:1rem;">
+                                <div class="lifecycle-title" style="margin-bottom:0.5rem;">REVIEWER NOTES</div>
+                                <textarea class="input-field w-full" rows="4" id="review-notes-input"
+                                    placeholder="Add private notes or justification..." style="resize:vertical;font-family:var(--font-sans);font-size:0.85rem;"></textarea>
+                                <div style="display:flex;flex-direction:column;gap:6px;margin-top:0.5rem;">
+                                    <label class="checkbox-label" style="font-size:0.8rem;">
                                         <input type="checkbox" id="check-rubric-assessed"> Assessed against institutional rubric
                                     </label>
-                                    <label class="checkbox-label">
+                                    <label class="checkbox-label" style="font-size:0.8rem;">
                                         <input type="checkbox" id="check-identity-verified"> Identity verified
                                     </label>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Fixed footer action bar -->
+                    <div class="review-footer-bar">
+                        <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--color-muted);" id="review-footer-note">Review all fields before deciding.</div>
+                        <div class="review-footer-actions">
+                            <button class="btn-secondary" id="admin-deny-btn"><i class="ph ph-x"></i> Deny</button>
+                            <button class="btn-secondary" id="request-revision-btn"><i class="ph ph-arrow-counter-clockwise"></i> Revision</button>
+                            <button class="btn-secondary" id="admin-escalate-btn"><i class="ph ph-arrow-up-right"></i> Escalate</button>
+                            <button class="btn-primary" id="admin-approve-btn"><i class="ph ph-seal-check"></i> Certify</button>
                         </div>
                     </div>
                 </section>
@@ -778,13 +763,15 @@
                 <button class="btn-secondary" id="admin-login-cancel">Cancel</button>
                 <button class="btn-primary" id="admin-login-submit"><i class="ph ph-sign-in"></i> Sign In</button>
             </div>
-            <div style="border-top: 1px solid var(--border-subtle); padding: 0.75rem 1.5rem; background: var(--bg-surface-hover); border-radius: 0 0 var(--radius-xl) var(--radius-xl);">
-                <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Demo Tools</p>
-                <button class="btn-secondary full-width" id="reset-student-btn" style="font-size: 0.8rem; justify-content: center;">
-                    <i class="ph ph-arrow-counter-clockwise"></i> Reset Student Session
-                </button>
-                <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.4rem 0 0; text-align: center;">Clears browser identity only. Existing cases stay in the DB.</p>
-            </div>
+            <details class="demo-tools-details" style="border-top: 1px solid var(--color-border); padding: 0.75rem 1.5rem 0.75rem;">
+                <summary style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-muted);cursor:pointer;list-style:none;padding:0.25rem 0;">Demo Tools ▸</summary>
+                <div style="margin-top:0.5rem;">
+                    <button class="btn-secondary full-width" id="reset-student-btn" style="font-size:0.8rem;justify-content:center;">
+                        <i class="ph ph-arrow-counter-clockwise"></i> Reset Student Session
+                    </button>
+                    <p style="font-size:0.7rem;color:var(--color-muted);margin:0.4rem 0 0;text-align:center;">Clears browser identity only. Existing cases stay in the DB.</p>
+                </div>
+            </details>
         </div>
     </div>
 
