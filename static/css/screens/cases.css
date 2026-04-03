@@ -1,0 +1,173 @@
+/* ==========================================================================
+   4. Status Screen / Case History
+   ========================================================================== */
+
+/* Case List (Gap #4) */
+.case-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.case-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.5rem;
+    background: white;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.case-list-item:hover {
+    border-color: var(--brand-accent);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.08);
+    transform: translateY(-1px);
+}
+
+.case-list-item.active-case {
+    border-left: 3px solid var(--brand-accent);
+}
+
+.case-list-left {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.case-id {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    min-width: 70px;
+}
+
+.case-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.case-info strong {
+    font-size: 0.9rem;
+}
+
+.case-list-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.status-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2.5rem;
+    min-width: 0;
+    /* Prevention of grid blowout */
+}
+
+/* Timeline Component */
+.timeline-container.vertical {
+    display: flex;
+    flex-direction: column;
+    padding: 2.5rem;
+}
+
+.timeline-step {
+    display: flex;
+    gap: 1.5rem;
+    position: relative;
+    padding-bottom: 2.5rem;
+}
+
+/* Connecting Line */
+.timeline-step:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 13px;
+    /* Center of the 28px indicator (28/2 - 1) */
+    top: 28px;
+    bottom: 0;
+    width: 2px;
+    background-color: var(--border-subtle);
+    z-index: 1;
+}
+
+.timeline-step.completed:not(:last-child)::before {
+    background-color: var(--status-green-text);
+}
+
+.timeline-step.active:not(:last-child)::before {
+    background: linear-gradient(to bottom, var(--brand-accent) 0%, var(--border-subtle) 100%);
+}
+
+.step-indicator {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background-color: var(--bg-surface-solid);
+    border: 2px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+    background-clip: padding-box;
+    /* Prevent border bleed */
+}
+
+.timeline-step.completed .step-indicator {
+    background-color: var(--status-green-text);
+    border-color: var(--status-green-text);
+    color: white;
+}
+
+.timeline-step.active .step-indicator {
+    border-color: var(--brand-accent);
+}
+
+.step-indicator .inner-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--brand-accent);
+}
+
+.step-content {
+    flex: 1;
+    padding-top: 0.15rem;
+}
+
+.step-content h4 {
+    margin-bottom: 0.25rem;
+}
+
+.step-content p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+/* Action Box */
+.action-box {
+    background-color: #FFFBEB;
+    border: 1px solid #FDE68A;
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+}
+
+.action-box h5 {
+    color: #92400E;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.action-box p {
+    color: #92400E;
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}

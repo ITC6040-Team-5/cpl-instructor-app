@@ -1,0 +1,361 @@
+/* ==========================================================================
+   5. Admin Dashboard (Tables) - Stripe Style clean grids
+   ========================================================================== */
+.table-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border-subtle);
+    background-color: transparent;
+}
+
+.tabs {
+    display: flex;
+    gap: 2rem;
+}
+
+.tab {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s;
+}
+
+.tab:hover {
+    color: var(--text-primary);
+}
+
+.tab.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--brand-primary);
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+    padding: 1.25rem 2rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.9rem;
+}
+
+.data-table th {
+    font-weight: 700;
+    color: var(--text-muted);
+    background-color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+.clickable-row {
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+}
+
+.clickable-row:hover {
+    background-color: rgba(255, 255, 255, 0.8);
+}
+
+.clickable-row td {
+    background-color: transparent;
+}
+
+/* ==========================================================================
+   6. Admin Review Screen
+   ========================================================================== */
+.case-review-layout {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr 1fr;
+    gap: 1.5rem;
+    height: calc(100vh - var(--topbar-height) - 7rem);
+    min-width: 0;
+}
+
+.review-record,
+.review-transcript,
+.review-evidence {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    align-self: stretch;
+}
+
+.review-record-content,
+.transcript-content,
+.evidence-content {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.transcript-content {
+    padding: 1.5rem;
+    background-color: rgba(249, 250, 251, 0.5);
+    /* lighter inside */
+}
+
+/* Miscellaneous utilities for settings/review */
+.rule-box {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.rule-box code {
+    font-family: var(--font-mono);
+    background: #F1F5F9;
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+    color: var(--brand-accent);
+    font-size: 0.8rem;
+}
+
+/* ==========================================================================
+   10. Input Fields for Settings
+   ========================================================================== */
+.input-field {
+    width: 100%;
+    padding: 0.65rem 0.85rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    font-size: 0.9rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background: white;
+    box-sizing: border-box;
+}
+
+.input-field:focus {
+    outline: none;
+    border-color: var(--brand-accent);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.input-error { border-color: #EF4444 !important; }
+
+.inline-error {
+    font-size: 0.75rem;
+    color: #EF4444;
+    margin-top: 0.25rem;
+}
+
+.field-group label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 0.4rem;
+}
+
+
+/* ==========================================================================
+   11. Case Detail View Enhancements
+   ========================================================================== */
+.case-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.case-index {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--brand-accent);
+    min-width: 60px;
+}
+
+
+/* ==========================================================================
+   12. Disabled Button State
+   ========================================================================== */
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.progress-bar-fill.yellow {
+    background: var(--status-yellow-text);
+}
+
+/* ==========================================================================
+   13. Admin Queue Table Overhaul
+   ========================================================================== */
+
+/* Sentence-case headers, refined styling */
+.data-table thead th {
+    text-transform: none;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+    user-select: none;
+}
+
+/* Sortable headers */
+.data-table thead th.sortable {
+    cursor: pointer;
+    position: relative;
+    transition: color 0.15s;
+}
+
+.data-table thead th.sortable:hover {
+    color: var(--brand-primary);
+}
+
+.data-table thead th.sortable::after {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-left: 6px;
+    vertical-align: middle;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    opacity: 0.3;
+    border-bottom: 4px solid currentColor;
+}
+
+.data-table thead th.sort-asc::after {
+    border-bottom: 4px solid currentColor;
+    border-top: none;
+    opacity: 1;
+}
+
+.data-table thead th.sort-desc::after {
+    border-top: 4px solid currentColor;
+    border-bottom: none;
+    opacity: 1;
+}
+
+/* Table row hover and spacing */
+.data-table tbody tr {
+    transition: background 0.12s;
+}
+
+.data-table tbody tr:hover {
+    background: var(--hover-bg, rgba(0,0,0,0.02));
+}
+
+.data-table tbody td {
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    vertical-align: middle;
+}
+
+/* Search input polish */
+.search-mini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+}
+
+.search-mini input {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 0.85rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-width: 200px;
+    transition: border-color 0.15s;
+}
+
+.search-mini input:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px rgba(var(--brand-primary-rgb, 59,130,246), 0.15);
+}
+
+.search-mini input::placeholder {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+/* Loading spinner */
+.loading-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--brand-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   14. Review Screen Actions Bar
+   ========================================================================== */
+.review-actions-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Force all review action buttons to the same height and padding */
+.review-actions-bar button {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    height: 36px;
+    min-height: 36px;
+    white-space: nowrap;
+}
+
+.btn-outline-danger {
+    background: transparent;
+    color: var(--status-red-text);
+    border: 1px solid var(--status-red-text);
+    padding: 8px 18px;
+    border-radius: var(--radius-full);
+    font-weight: 500;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-outline-danger:hover {
+    background: var(--status-red-text);
+    color: white;
+}
+
+/* btn-link for clear-search */
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--brand-primary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.btn-link:hover {
+    opacity: 0.8;
+}
+
+/* text-xs utility */
+.text-xs {
+    font-size: 0.75rem;
+}
