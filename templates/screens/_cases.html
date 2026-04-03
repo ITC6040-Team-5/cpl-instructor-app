@@ -1,0 +1,69 @@
+                <!-- 4. Case History Screen -->
+                <section id="case-history-screen" class="screen-view">
+                    <div class="content-header flex-between">
+                        <div>
+                            <h2>Case History</h2>
+                            <p class="subtitle">View your evaluation cases and their progress.</p>
+                        </div>
+                    </div>
+
+                    <!-- Case List View -->
+                    <div id="case-list-view">
+                        <div class="case-list" id="case-list-container">
+                            <!-- Dynamic: rendered by app.js from /api/cases -->
+                            <div class="text-center text-muted p-4" id="case-list-empty">
+                                <i class="ph ph-folder-open" style="font-size: 2rem;"></i>
+                                <p class="mt-2">No cases yet. Start a conversation to create your first case.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Case Detail View (Hidden by Default) -->
+                    <div id="case-detail-view" style="display: none;">
+                        <button class="btn-secondary mb-4" id="back-to-case-list">
+                            <i class="ph ph-arrow-left"></i> Back to Case History
+                        </button>
+
+                        <div class="case-detail-header mb-4">
+                            <h2 id="case-detail-title">Case Details</h2>
+                            <span id="case-detail-status" class="badge gray">—</span>
+                        </div>
+
+                        <div class="status-layout">
+                            <div class="status-main">
+                                <!-- Summary Card -->
+                                <div class="card mb-4">
+                                    <h3>Case Summary</h3>
+                                    <p class="text-muted" id="case-detail-summary">No summary yet.</p>
+                                    <p class="text-sm text-muted mt-2" id="case-detail-completion">0% complete</p>
+                                </div>
+
+                                <!-- Action Buttons (moved above timeline for visibility) -->
+                                <div class="case-detail-actions mb-4" style="display: flex; gap: 12px;">
+                                    <button class="btn-primary" id="view-conversation-btn"><i class="ph ph-chat-text"></i> View Conversation</button>
+                                    <button class="btn-secondary" id="continue-conversation-btn" style="display:none;"><i class="ph ph-arrow-right"></i> Continue Conversation</button>
+                                    <button class="btn-secondary text-danger" id="delete-case-btn" style="display:none;"><i class="ph ph-trash"></i> Delete Case</button>
+                                </div>
+
+                                <!-- Reviewer Notes (shown if applicable) -->
+                                <div class="card mb-4" id="case-detail-reviewer-notes" style="display:none; border-left: 3px solid var(--status-yellow-text);">
+                                    <h4><i class="ph ph-note-pencil"></i> Reviewer Feedback</h4>
+                                    <p class="notes-content text-muted"></p>
+                                </div>
+
+                                <!-- Timeline -->
+                                <div class="card p-0" id="case-detail-timeline">
+                                    <!-- Dynamic: populated by app.js -->
+                                </div>
+                            </div>
+
+                            <div class="status-sidebar">
+                                <div class="card bg-gray">
+                                    <h3>Need Help?</h3>
+                                    <p class="text-sm mt-2 mb-3">If you are stuck mapping your competencies, reach out to your CPL Advisor.</p>
+                                    <button class="btn-secondary full-width"><i class="ph ph-chat-circle"></i> Message Advisor</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
