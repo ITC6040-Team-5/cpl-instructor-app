@@ -1,0 +1,136 @@
+                <!-- 7. Admin Settings Screen -->
+                <section id="admin-settings-screen" class="screen-view">
+                    <div class="content-header flex-between">
+                        <div>
+                            <h2>System Settings</h2>
+                            <p class="subtitle">Configure institution, thresholds, and AI behavior.</p>
+                        </div>
+                        <button class="btn-primary" id="save-settings-btn"><i class="ph ph-floppy-disk"></i> Save Settings</button>
+                    </div>
+
+                    <div class="settings-grid">
+                        <!-- Card 1: Institution & Thresholds -->
+                        <div class="card">
+                            <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-buildings"></i></div>
+                            <h3>Institution & Thresholds</h3>
+                            <p class="text-sm text-muted mb-4">Core configuration for case lifecycle behavior.</p>
+
+                            <div class="field-group mb-3">
+                                <label>University Name</label>
+                                <input type="text" class="input-field" id="setting-university-name" value="Northeastern University" placeholder="Enter university name">
+                            </div>
+                            <div class="field-group mb-3">
+                                <label>Draft Save Threshold (%)</label>
+                                <input type="number" class="input-field" id="setting-draft-threshold" value="30" min="0" max="100">
+                                <span class="text-sm text-muted">Minimum completion to auto-save draft</span>
+                            </div>
+                            <div class="field-group mb-3">
+                                <label>Submit Threshold (%)</label>
+                                <input type="number" class="input-field" id="setting-submit-threshold" value="80" min="0" max="100">
+                                <span class="text-sm text-muted">Minimum completion to allow submission</span>
+                            </div>
+                            <div class="field-group mb-3">
+                                <label>Delete Allowed Below (%)</label>
+                                <input type="number" class="input-field" id="setting-delete-threshold" value="50" min="0" max="100">
+                                <span class="text-sm text-muted">Applicants can delete cases below this</span>
+                            </div>
+                        </div>
+
+                        <!-- Card 2: AI Persona & Guardrails -->
+                        <div class="card">
+                            <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-robot"></i></div>
+                            <h3>AI Persona & Guardrails</h3>
+                            <p class="text-sm text-muted mb-4">Configure behavior of the intake AI assistant.</p>
+                            <div class="setting-row flex-between py-2 border-bottom">
+                                <span>Strict Domain Mode</span>
+                                <div class="toggle active" id="toggle-strict-domain"></div>
+                            </div>
+                            <div class="setting-row flex-between py-2 border-bottom">
+                                <span>Require Evidence Links</span>
+                                <div class="toggle active" id="toggle-require-evidence"></div>
+                            </div>
+                            <div class="field-group mt-3">
+                                <label>System Prompt Addendum</label>
+                                <textarea class="input-field" id="setting-system-prompt-addendum" rows="3"
+                                    placeholder="Add custom instructions to Echo's system prompt..."></textarea>
+                                <span class="text-sm text-muted">Appended to Echo's base instructions.</span>
+                            </div>
+                        </div>
+
+                        <!-- Card 3: Workflow & Routing -->
+                        <div class="card">
+                            <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-network"></i></div>
+                            <h3>Workflow & Routing</h3>
+                            <p class="text-sm text-muted mb-4">Rules for auto-assigning cases based on target program or course.</p>
+                            <div class="rule-box bg-gray p-2 text-sm rounded mb-2">
+                                If <code>Course == CS*</code> route to <code>Prof. Turing</code>
+                            </div>
+                            <div class="rule-box bg-gray p-2 text-sm rounded mb-4">
+                                If <code>Confidence &lt; 60%</code> flag as <code>Needs Advisor</code>
+                            </div>
+                            <button class="btn-secondary" disabled title="Coming soon"><i class="ph ph-plus"></i> Add Rule</button>
+                            <p class="text-sm text-muted mt-2"><i class="ph ph-info"></i> Routing rules coming in a future update.</p>
+                        </div>
+                    </div>
+
+                    <!-- Knowledge Base Card (full width) -->
+                    <div class="card card-full-width mt-0" style="margin-top: 0;">
+                        <div class="flex-between mb-3">
+                            <div>
+                                <div class="card-icon-header font-xl mb-2 text-indigo"><i class="ph-fill ph-books"></i></div>
+                                <h3>Course Catalog &amp; Knowledge Base</h3>
+                                <p class="text-sm text-muted">Manage courses and policies that guide Echo's recommendations. Persists across deployments.</p>
+                            </div>
+                            <div class="flex-align-center gap-2">
+                                <button class="btn-secondary" id="kb-add-btn"><i class="ph ph-plus"></i> Add Entry</button>
+                                <button class="btn-secondary" id="kb-refresh-btn"><i class="ph ph-arrow-clockwise"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Add entry form (hidden by default) -->
+                        <div id="kb-add-form" style="display:none;" class="bg-gray rounded p-4 mb-3">
+                            <div style="display:grid; grid-template-columns: 120px 1fr 1fr; gap: 12px; align-items:end;">
+                                <div class="field-group mb-0">
+                                    <label>Type</label>
+                                    <select class="input-field" id="kb-new-type">
+                                        <option value="course">course</option>
+                                        <option value="policy">policy</option>
+                                        <option value="example">example</option>
+                                    </select>
+                                </div>
+                                <div class="field-group mb-0">
+                                    <label>Code / Key</label>
+                                    <input type="text" class="input-field" id="kb-new-key" placeholder="e.g. DGM6105">
+                                </div>
+                                <div class="field-group mb-0">
+                                    <label>Title</label>
+                                    <input type="text" class="input-field" id="kb-new-title" placeholder="Course or policy name">
+                                </div>
+                            </div>
+                            <div class="field-group mt-2 mb-2">
+                                <label>Description / Content</label>
+                                <textarea class="input-field" id="kb-new-content" rows="2" placeholder="Full description..."></textarea>
+                            </div>
+                            <div class="flex-align-center gap-2">
+                                <button class="btn-primary" id="kb-save-btn"><i class="ph ph-floppy-disk"></i> Save</button>
+                                <button class="btn-secondary" id="kb-cancel-btn">Cancel</button>
+                            </div>
+                        </div>
+
+                        <!-- Entries table -->
+                        <table class="kb-table" id="kb-table">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Code</th>
+                                    <th>Title</th>
+                                    <th>Content</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="kb-table-body">
+                                <tr><td colspan="5" class="text-center text-muted p-4">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>

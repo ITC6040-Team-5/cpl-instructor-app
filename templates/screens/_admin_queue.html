@@ -1,0 +1,48 @@
+                <!-- 5. Admin Dashboard Screen -->
+                <section id="admin-dashboard-screen" class="screen-view">
+                    <div class="content-header flex-between">
+                        <div>
+                            <h2>Case Queue</h2>
+                            <p class="subtitle">Manage and triage submitted CPL portfolios.</p>
+                        </div>
+                        <div class="actions-row">
+                            <button class="btn-secondary" id="admin-filter-btn"><i class="ph ph-funnel"></i> Filter</button>
+                            <button class="btn-secondary"><i class="ph ph-export"></i> Export</button>
+                        </div>
+                    </div>
+
+                    <div class="card p-0 overflow-hidden">
+                        <div class="table-toolbar">
+                            <div class="tabs" id="admin-queue-tabs">
+                                <div class="tab active" data-filter="all">All Cases (0)</div>
+                                <div class="tab" data-filter="needs-review">Needs Review (0)</div>
+                                <div class="tab" data-filter="in-progress">In Progress (0)</div>
+                                <div class="tab" data-filter="completed">Completed (0)</div>
+                            </div>
+                            <div class="search-mini" id="admin-search-box">
+                                <i class="ph ph-magnifying-glass"></i>
+                                <input type="text" id="admin-search-input" placeholder="Search by name or case ID...">
+                            </div>
+                        </div>
+                        <div class="admin-table-scroll">
+                        <table class="data-table" id="admin-cases-table">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" data-sort="case_id">Case ID</th>
+                                    <th class="sortable" data-sort="applicant">Applicant</th>
+                                    <th class="sortable" data-sort="target_course">Target Course</th>
+                                    <th class="sortable" data-sort="status">Status</th>
+                                    <th class="sortable" data-sort="completion_pct">Completion</th>
+                                    <th class="sortable" data-sort="confidence_score">AI Confidence</th>
+                                    <th class="sortable" data-sort="updated_at">Date Updated</th>
+                                    <th></th>
+                                    <th title="Delete case"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dynamic: rendered by app.js from /api/admin/cases -->
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>
+                </section>

@@ -1,0 +1,75 @@
+    <!-- Admin Login Modal -->
+    <div class="modal-overlay" id="admin-login-modal" style="display: none;">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3><i class="ph ph-shield-check"></i> Reviewer Access</h3>
+                <button class="btn-icon modal-close-btn" id="admin-login-close"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-sm text-muted mb-4">Authenticate with your reviewer credentials to access the admin portal.</p>
+                <div class="field-group mb-3">
+                    <label for="admin-login-email">Email</label>
+                    <input type="email" class="input-field" id="admin-login-email" placeholder="admin.reviewer@northeastern.edu" autocomplete="email">
+                </div>
+                <div class="field-group mb-3">
+                    <label for="admin-login-password">Password</label>
+                    <input type="password" class="input-field" id="admin-login-password" placeholder="Enter password" autocomplete="current-password">
+                </div>
+                <div id="admin-login-error" class="text-sm" style="color: var(--status-danger); display: none; margin-bottom: 12px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="admin-login-cancel">Cancel</button>
+                <button class="btn-primary" id="admin-login-submit"><i class="ph ph-sign-in"></i> Sign In</button>
+            </div>
+            <div style="border-top: 1px solid var(--border-subtle); padding: 0.75rem 1.5rem; background: var(--bg-surface-hover); border-radius: 0 0 var(--radius-xl) var(--radius-xl);">
+                <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Demo Tools</p>
+                <button class="btn-secondary full-width" id="reset-student-btn" style="font-size: 0.8rem; justify-content: center;">
+                    <i class="ph ph-arrow-counter-clockwise"></i> Reset Student Session
+                </button>
+                <p style="font-size: 0.7rem; color: var(--text-muted); margin: 0.4rem 0 0; text-align: center;">Clears browser identity only. Existing cases stay in the DB.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Escalation Drawer -->
+    <div id="escalation-drawer" class="drawer-overlay">
+        <div class="drawer-content">
+            <div class="drawer-header">
+                <h3><i class="ph ph-arrow-up-right"></i> Escalate Case</h3>
+                <button class="btn-icon drawer-close" id="escalation-drawer-close"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="drawer-body">
+                <p class="text-sm text-muted mb-4">Record an escalation for expert or committee review. This saves a trackable record.</p>
+                <div class="field-group mb-3">
+                    <label>Case Reference</label>
+                    <div class="field-value font-mono" id="escalation-case-ref">—</div>
+                </div>
+                <div class="field-group mb-3">
+                    <label>Applicant</label>
+                    <div class="field-value" id="escalation-applicant">—</div>
+                </div>
+                <div class="field-group mb-3">
+                    <label for="escalation-type">Escalation Type</label>
+                    <select class="input-field" id="escalation-type">
+                        <option value="SME Review">SME Review — Subject Matter Expert</option>
+                        <option value="Faculty Review">Faculty Review</option>
+                        <option value="Validation Session">Validation Session (Quiz/Assessment)</option>
+                    </select>
+                </div>
+                <div class="field-group mb-3">
+                    <label for="escalation-to-name">Escalate To (Name)</label>
+                    <input type="text" class="input-field" id="escalation-to-name" placeholder="Prof. Smith or Committee Name">
+                </div>
+                <div class="field-group mb-3">
+                    <label for="escalation-email">Escalate To (Email)</label>
+                    <input type="email" class="input-field" id="escalation-email" placeholder="faculty@northeastern.edu">
+                </div>
+                <div class="field-group mb-3">
+                    <label for="escalation-notes">Escalation Notes</label>
+                    <textarea class="input-field w-full" rows="4" id="escalation-notes" placeholder="Describe the reason for escalation and what the reviewer should assess..."></textarea>
+                </div>
+                <button class="btn-primary full-width" id="escalation-prepare-btn"><i class="ph ph-check-circle"></i> Record Escalation</button>
+                <p class="text-sm text-muted mt-2 text-center"><i class="ph ph-info"></i> Saves a trackable escalation record. Email integration coming soon.</p>
+            </div>
+        </div>
+    </div>
