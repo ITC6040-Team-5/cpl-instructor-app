@@ -54,7 +54,7 @@
     <!-- marked.js — industry-standard Markdown parser for LLM chat rendering (MIT) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="{{ url_for('static', filename='notifications.js') }}"></script>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 
 </html>
