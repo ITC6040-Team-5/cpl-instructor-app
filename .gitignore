@@ -31,5 +31,8 @@ uploads/
 # Presentation folder — kept local, not part of the main repo
 Preso/
 
+# Design assets — prototype exports + screenshots, local reference only
+design/
+
 # Logs
 *.log
