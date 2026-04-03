@@ -15,8 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════
     // 0. State
     // ═══════════════════════════════════════════════════
-    // Echo avatar — ✦ (U+2726 Black Four Pointed Star), no CDN dependency
-    const ECHO_AVATAR = `<div class="avatar-small bg-ai" style="font-size:0.85rem;line-height:1;">✦</div>`;
+    // Echo avatar — soundwave SVG (no CDN dependency)
+    const ECHO_AVATAR = `<div class="avatar-small bg-ai"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="2" fill="white"/><circle cx="10" cy="10" r="5" stroke="white" stroke-width="1.2" fill="none" opacity="0.6"/><circle cx="10" cy="10" r="8" stroke="white" stroke-width="1" fill="none" opacity="0.3"/></svg></div>`;
 
     let sessionId = localStorage.getItem('cpl_session_id');
     if (!sessionId) {
@@ -149,10 +149,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Route-entry hooks
+        if (path === '/') renderRecentCasesStrip();
         if (path === '/cases') fetchApplicantCases();
         if (path === '/admin') { fetchAdminCases(); switchToReviewerNav(); }
         if (path === '/admin/settings') { loadSettingsTab(); switchToReviewerNav(); }
         if (path === '/' || path === '/chat' || path === '/cases') switchToApplicantNav();
+
+        // Update topbar nav active state
+        renderTopbarNav(path.startsWith('/admin') ? 'reviewer' : 'applicant', path);
 
         // Toggle primary action button visibility based on mode
         const primaryBtn = document.getElementById('primary-action-btn');
@@ -351,6 +355,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         `<span class="competency-tag confirmed">${escapeHtml(c)}</span>`
                     ).join('');
                 }
+                // Also populate the insight rail
+                openInsightRail(competencies, data);
             } catch(e) { /* non-fatal */ }
         }
 
@@ -367,6 +373,31 @@ document.addEventListener('DOMContentLoaded', () => {
             submitBtn.disabled = !data.can_submit;
             submitBtn.title = data.can_submit ? 'Submit your case for review' : `Case must be at least 80% complete (currently ${pct}%)`;
         }
+    }
+
+    function openInsightRail(competencies, data) {
+        const rail = document.getElementById('insight-rail');
+        const content = document.getElementById('insight-rail-content');
+        if (!rail || !content || !competencies || competencies.length === 0) return;
+
+        const cards = [];
+        // Course card
+        if (data && data.target_course && data.target_course !== '—') {
+            cards.push(`<div class="insight-card">
+                <div class="insight-card-label">Course</div>
+                <div class="insight-card-value">${escapeHtml(data.target_course)}</div>
+            </div>`);
+        }
+        // Competency cards
+        competencies.forEach(c => {
+            cards.push(`<div class="insight-card">
+                <div class="insight-card-label">Competency</div>
+                <div class="insight-card-value">${escapeHtml(c)}</div>
+            </div>`);
+        });
+
+        content.innerHTML = cards.join('');
+        rail.classList.add('open');
     }
 
     if (chatSendBtn && chatInput) {
@@ -517,6 +548,35 @@ document.addEventListener('DOMContentLoaded', () => {
         primaryBtn.addEventListener('click', () => initiateChatFromLanding('I want to start a new evaluation case.'));
     }
 
+
+    // ═══════════════════════════════════════════════════
+    // 3b. Recent Cases Strip (Landing screen)
+    // ═══════════════════════════════════════════════════
+    async function renderRecentCasesStrip() {
+        const strip = document.getElementById('recent-cases-strip');
+        const list = document.getElementById('recent-cases-list');
+        if (!strip || !list) return;
+        try {
+            const resp = await fetch('/api/cases', { headers: getRequestHeaders() });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const cases = (data.cases || []).slice(0, 3);
+            if (cases.length === 0) { strip.style.display = 'none'; return; }
+            list.innerHTML = cases.map(c => {
+                const seq = c.case_id ? c.case_id.split('-').pop() : '—';
+                const course = c.target_course && c.target_course !== '—' ? c.target_course : 'Course TBD';
+                return `<div class="recent-case-row">
+                    <span class="recent-case-id">${escapeHtml(c.case_id || '—')}</span>
+                    <span class="recent-case-name">${escapeHtml(course)}</span>
+                    <a class="recent-case-resume" href="/chat"
+                       onclick="event.preventDefault(); navigateTo('/chat');">Resume →</a>
+                </div>`;
+            }).join('');
+            strip.style.display = 'block';
+        } catch (e) {
+            strip.style.display = 'none';
+        }
+    }
 
     // ═══════════════════════════════════════════════════
     // 4. Case History (Applicant)
@@ -888,6 +948,61 @@ document.addEventListener('DOMContentLoaded', () => {
         if (badge) badge.textContent = needsReview || all;
     }
 
+    // ── Card view renderer ────────────────────────────────────────────────
+    function renderAdminCards() {
+        const container = document.getElementById('queue-card-view');
+        if (!container) return;
+        const cases = getFilteredCases();
+        if (cases.length === 0) {
+            container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+                <div class="empty-state-icon"><i class="ph ph-clipboard-text"></i></div>
+                <div class="empty-state-title">The queue is clear.</div>
+                <div class="empty-state-body">No cases are awaiting review.</div>
+            </div>`;
+            return;
+        }
+        container.innerHTML = cases.map(c => {
+            const conf = c.confidence_score != null ? Math.round(c.confidence_score) : null;
+            return `<div class="docket-card" onclick="openAdminReview('${escapeHtml(c.case_id)}')">
+                <div class="docket-card-header">
+                    <span class="docket-id">${escapeHtml(c.case_id)}</span>
+                    <span class="badge ${getBadgeClass(c.status)}">${escapeHtml(c.status)}</span>
+                </div>
+                <div class="docket-name">${escapeHtml(c.applicant_name || '—')}</div>
+                <div class="docket-course">${escapeHtml(c.target_course || 'Course TBD')}</div>
+                <div class="docket-meta">
+                    <span class="docket-completion">${Math.round(c.completion_pct || 0)}%</span>
+                    ${conf !== null ? `<span class="docket-conf">AI ${conf}%</span>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // ── View toggle handler ───────────────────────────────────────────────
+    let _currentQueueView = 'list';
+    const viewToggle = document.getElementById('queue-view-toggle');
+    if (viewToggle) {
+        viewToggle.addEventListener('click', (e) => {
+            const btn = e.target.closest('.view-btn');
+            if (!btn) return;
+            const view = btn.dataset.view;
+            if (view === _currentQueueView) return;
+            _currentQueueView = view;
+            viewToggle.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+            const listView = document.getElementById('queue-list-view');
+            const cardView = document.getElementById('queue-card-view');
+            if (view === 'card') {
+                if (listView) listView.style.display = 'none';
+                if (cardView) cardView.style.display = 'grid';
+                renderAdminCards();
+            } else {
+                if (listView) listView.style.display = '';
+                if (cardView) cardView.style.display = 'none';
+                renderAdminTable();
+            }
+        });
+    }
+
     function renderAdminTable() {
         const tbody = document.querySelector('#admin-cases-table tbody');
         if (!tbody) return;
@@ -1212,9 +1327,26 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await response.json();
             if (response.ok && data.status === 'success') {
-                showToast(`Case ${decision.toLowerCase()}d successfully.`, 'success');
-                fetchAdminCases();
-                navigateTo('/admin');
+                if (decision === 'Approve') {
+                    // Show CERTIFY stamp before navigating away
+                    const stamp = document.getElementById('certify-stamp');
+                    if (stamp) {
+                        stamp.classList.add('visible');
+                        setTimeout(() => {
+                            stamp.classList.remove('visible');
+                            fetchAdminCases();
+                            navigateTo('/admin');
+                        }, 1800);
+                    } else {
+                        fetchAdminCases();
+                        navigateTo('/admin');
+                    }
+                    showToast('Case certified successfully.', 'success');
+                } else {
+                    showToast(`Case ${decision.toLowerCase()}d successfully.`, 'success');
+                    fetchAdminCases();
+                    navigateTo('/admin');
+                }
             } else {
                 showToast(data.error || 'Action failed.', 'error');
             }
@@ -1359,7 +1491,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ═══════════════════════════════════════════════════
-    // 7. Role Switcher + Admin Authentication
+    // 7. Topbar Navigation Renderer
+    // ═══════════════════════════════════════════════════
+    function renderTopbarNav(role, currentPath) {
+        const nav = document.getElementById('topbar-nav');
+        if (!nav) return;
+        const links = role === 'reviewer'
+            ? [
+                { href: '/admin',          label: 'Workspaces' },
+                { href: '/admin/settings', label: 'Settings'   }
+              ]
+            : [
+                { href: '/',      label: 'Home'     },
+                { href: '/chat',  label: 'Studio'   },
+                { href: '/cases', label: 'Dossiers' }
+              ];
+        nav.innerHTML = links.map(l =>
+            `<a href="${l.href}" class="topbar-link${currentPath === l.href ? ' active' : ''}"
+                onclick="event.preventDefault(); navigateTo('${l.href}');">${l.label}</a>`
+        ).join('');
+    }
+
+    // 7b. Role Switcher + Admin Authentication
     // ═══════════════════════════════════════════════════
     const roleSwitchBtn = document.getElementById('role-switch-btn');
     const applicantNavWrapper = document.getElementById('applicant-nav-wrapper');
@@ -1379,6 +1532,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (profileRole) profileRole.innerText = 'Reviewer';
         const switchLabel = document.getElementById('role-switch-label');
         if (switchLabel) switchLabel.innerText = 'Switch to Applicant';
+        renderTopbarNav('reviewer', window.location.pathname);
     }
 
     function switchToApplicantNav() {
@@ -1388,6 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateProfileDisplay();
         const switchLabel = document.getElementById('role-switch-label');
         if (switchLabel) switchLabel.innerText = 'Switch to Reviewer';
+        renderTopbarNav('applicant', window.location.pathname);
     }
 
     function updateProfileDisplay() {

@@ -4,12 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NUPathway — Credit for Prior Learning</title>
-    <meta name="description" content="NUPathway helps students earn credit for prior learning through AI-guided portfolio evaluation.">
-    <!-- Inter Font -->
+    <title>the Studio — Credit for Prior Learning</title>
+    <meta name="description" content="the Studio helps students earn credit for prior learning through AI-guided portfolio evaluation.">
+    <!-- Studio Typography: Newsreader + Inter Tight + JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <!-- Phosphor Icons for crisp, clean UI icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -24,8 +24,11 @@
         <nav class="sidebar">
             <div class="sidebar-header">
                 <div class="brand">
-                    <i class="ph-fill ph-compass"></i>
-                    <span class="sidebar-text">NUPathway</span>
+                    <svg width="22" height="22" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M14 2 L25 8 L25 20 L14 26 L3 20 L3 8 Z" fill="#E8662A"/>
+                        <line x1="9" y1="14" x2="19" y2="14" stroke="#F9F7F1" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    <span class="sidebar-text" style="font-family:var(--font-sans);font-weight:700;letter-spacing:-0.01em;">the Studio</span>
                 </div>
                 <!-- Toggle Button -->
                 <button class="btn-icon-subtle toggle-sidebar" id="sidebar-toggle" aria-label="Toggle Sidebar">
@@ -143,8 +146,10 @@
         <main class="workspace">
             <!-- Top Header -->
             <header class="topbar">
-                <div class="topbar-left">
-                    <div class="breadcrumbs" id="dynamic-breadcrumb">Home / Docs</div>
+                <div class="topbar-left" style="display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
+                    <div class="breadcrumbs" id="dynamic-breadcrumb" style="display:none;"></div>
+                    <!-- Primary nav — rendered by renderTopbarNav() in app.js -->
+                    <nav id="topbar-nav" class="topbar-nav"></nav>
                 </div>
                 <div class="topbar-center">
                     <div class="search-bar">
@@ -166,9 +171,8 @@
                 <section id="home-screen" class="screen-view active">
                     <div class="conversational-landing">
                         <div class="landing-header">
-                            <h1 class="landing-title">How can I help you prepare today?</h1>
-                            <p class="landing-subtitle">Describe your experience, start a new case, or ask for guidance.
-                            </p>
+                            <h1 class="landing-title">What would you like to evaluate?</h1>
+                            <p class="landing-subtitle">Start a new dossier or resume where you left off.</p>
                         </div>
 
                         <div class="landing-composer">
@@ -176,8 +180,8 @@
                                 <i class="ph ph-sparkle composer-icon"></i>
                                 <textarea class="composer-textarea"
                                     placeholder="E.g., I want to get credit for my 3 years as a shift manager..."></textarea>
-                                <button class="btn-primary composer-send-btn" id="landing-send-btn">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                <button class="composer-send-btn" id="landing-send-btn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                         <line x1="12" y1="19" x2="12" y2="5"></line>
                                         <polyline points="5 12 12 5 19 12"></polyline>
@@ -187,25 +191,28 @@
                         </div>
 
                         <div class="landing-suggestions">
-                            <div class="prompt-suggestion"
-                                data-prompt="I want to start a new evaluation case for CS400.">
+                            <div class="prompt-suggestion" data-prompt="I want to start a new evaluation case.">
                                 <div class="suggestion-icon"><i class="ph-fill ph-rocket-launch"></i></div>
                                 <div class="suggestion-text">Start a new evaluation</div>
                             </div>
-                            <div class="prompt-suggestion"
-                                data-prompt="How do I upload evidence for my prior learning?">
+                            <div class="prompt-suggestion" data-prompt="How do I upload evidence for my prior learning?">
                                 <div class="suggestion-icon"><i class="ph-fill ph-file-arrow-up"></i></div>
-                                <div class="suggestion-text">Upload my evidence</div>
+                                <div class="suggestion-text">Upload evidence</div>
                             </div>
                             <div class="prompt-suggestion" data-prompt="What kind of experience counts for credit?">
                                 <div class="suggestion-icon"><i class="ph-fill ph-question-mark"></i></div>
                                 <div class="suggestion-text">How does this work?</div>
                             </div>
-                            <div class="prompt-suggestion"
-                                data-prompt="Can I resume my draft for the Management course?">
+                            <div class="prompt-suggestion" data-prompt="Can I resume my draft?">
                                 <div class="suggestion-icon"><i class="ph-fill ph-arrow-counter-clockwise"></i></div>
                                 <div class="suggestion-text">Resume my draft</div>
                             </div>
+                        </div>
+
+                        <!-- Recent cases strip — rendered by JS if history exists -->
+                        <div id="recent-cases-strip" class="recent-cases-strip" style="display:none;">
+                            <div class="recent-cases-label">Recent Dossiers</div>
+                            <div id="recent-cases-list"></div>
                         </div>
                     </div>
                 </section>
@@ -373,6 +380,12 @@
                                 <button class="btn-icon"><i class="ph ph-dots-three"></i></button>
                             </div>
                         </div>
+
+                        <!-- Insight Rail — grows as Echo extracts competencies -->
+                        <aside id="insight-rail" class="insight-rail">
+                            <div class="insight-rail-header">Extracted Insights</div>
+                            <div id="insight-rail-content"></div>
+                        </aside>
                     </div>
                 </section>
 
@@ -466,11 +479,23 @@
                                 <div class="tab" data-filter="in-progress">In Progress (0)</div>
                                 <div class="tab" data-filter="completed">Completed (0)</div>
                             </div>
-                            <div class="search-mini" id="admin-search-box">
-                                <i class="ph ph-magnifying-glass"></i>
-                                <input type="text" id="admin-search-input" placeholder="Search by name or case ID...">
+                            <div style="display:flex;align-items:center;gap:0.75rem;">
+                                <div class="search-mini" id="admin-search-box">
+                                    <i class="ph ph-magnifying-glass"></i>
+                                    <input type="text" id="admin-search-input" placeholder="Search by name or case ID...">
+                                </div>
+                                <!-- View toggle: list / card -->
+                                <div class="view-toggle" id="queue-view-toggle">
+                                    <button class="view-btn active" data-view="list" title="List view">
+                                        <i class="ph ph-list"></i>
+                                    </button>
+                                    <button class="view-btn" data-view="card" title="Card view">
+                                        <i class="ph ph-squares-four"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
+                        <div id="queue-list-view">
                         <div class="admin-table-scroll">
                         <table class="data-table" id="admin-cases-table">
                             <thead>
@@ -480,7 +505,7 @@
                                     <th class="sortable" data-sort="target_course">Target Course</th>
                                     <th class="sortable" data-sort="status">Status</th>
                                     <th class="sortable" data-sort="completion_pct">Completion</th>
-                                    <th class="sortable" data-sort="confidence_score">AI Confidence</th>
+                                    <th class="sortable" data-sort="confidence_score">AI Score</th>
                                     <th class="sortable" data-sort="updated_at">Date Updated</th>
                                     <th></th>
                                     <th title="Delete case"></th>
@@ -491,11 +516,18 @@
                             </tbody>
                         </table>
                         </div>
+                        </div>
+                        <!-- Card view — hidden by default -->
+                        <div id="queue-card-view" class="docket-card-grid" style="display:none;padding:1rem;">
+                            <!-- Dynamic: rendered by renderAdminCards() in app.js -->
+                        </div>
                     </div>
                 </section>
 
                 <!-- 6. Admin Case Review Screen -->
-                <section id="admin-review-screen" class="screen-view">
+                <section id="admin-review-screen" class="screen-view" style="position:relative;">
+                    <!-- CERTIFY stamp overlay — shown on approve confirmation -->
+                    <div class="certify-stamp" id="certify-stamp">CERTIFIED</div>
                     <div class="review-topbar flex-between mb-4">
                         <div class="review-title flex-align-center gap-3">
                             <button class="btn-icon" id="review-back-btn"><i class="ph ph-arrow-left"></i></button>
@@ -508,7 +540,7 @@
                             <button class="btn-outline-danger" id="admin-deny-btn"><i class="ph ph-x"></i> Deny</button>
                             <button class="btn-secondary" id="request-revision-btn"><i class="ph ph-arrow-counter-clockwise"></i> Request Revision</button>
                             <button class="btn-secondary" id="admin-escalate-btn"><i class="ph ph-arrow-up-right"></i> Escalate</button>
-                            <button class="btn-primary" id="admin-approve-btn"><i class="ph ph-check"></i> Approve Credit</button>
+                            <button class="btn-primary" id="admin-approve-btn"><i class="ph ph-seal-check"></i> Certify</button>
                         </div>
                     </div>
 
