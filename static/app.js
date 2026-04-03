@@ -57,7 +57,6 @@ document.addEventListener('DOMContentLoaded', () => {
         '/': 'home-screen',
         '/chat': 'intake-screen',
         '/cases': 'case-history-screen',
-        '/evidence': 'evidence-screen',
         '/admin': 'admin-dashboard-screen',
         '/admin/settings': 'admin-settings-screen',
     };
@@ -75,7 +74,6 @@ document.addEventListener('DOMContentLoaded', () => {
         '/': 'Applicant View / Home',
         '/chat': 'Applicant View / New Evaluation',
         '/cases': 'Applicant View / Case History',
-        '/evidence': 'Applicant View / Evidence Vault',
         '/admin': 'Reviewer Portal / Case Queue',
         '/admin/review': 'Reviewer Portal / Case Review',
         '/admin/settings': 'Reviewer Portal / Settings',
@@ -138,13 +136,10 @@ document.addEventListener('DOMContentLoaded', () => {
             footer.style.transform = path === '/chat' ? 'translateY(0)' : 'translateY(10px)';
         }
 
-        // Full-bleed screens: zero out container padding so layouts fill viewport correctly
+        // Chat + admin review screens: zero out container padding so layouts fill viewport
         const screensContainer = document.querySelector('.screens-container');
         if (screensContainer) {
-            const fullBleed = path === '/chat'
-                || path.startsWith('/admin/review')
-                || path === '/admin';
-            if (fullBleed) {
+            if (path === '/chat' || path.startsWith('/admin/review')) {
                 screensContainer.style.padding = '0';
                 screensContainer.style.overflow = 'hidden';
             } else {
@@ -156,10 +151,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Route-entry hooks
         if (path === '/') { renderRecentCasesStrip(); exitSessionMode(); }
         if (path === '/cases') { fetchApplicantCases(); exitSessionMode(); }
-        if (path === '/evidence') { loadEvidenceVault(); exitSessionMode(); }
         if (path === '/admin') { fetchAdminCases(); switchToReviewerNav(); }
         if (path === '/admin/settings') { loadSettingsTab(); switchToReviewerNav(); }
-        if (path === '/' || path === '/chat' || path === '/cases' || path === '/evidence') switchToApplicantNav();
+        if (path === '/' || path === '/chat' || path === '/cases') switchToApplicantNav();
         // On /chat restore session context if case is active
         if (path === '/chat' && currentCaseId) {
             enterSessionMode(currentCaseId, applicantName);
@@ -215,48 +209,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatSendBtn = document.getElementById('chat-send');
     const chatTranscript = document.getElementById('intake-chat');
 
-    // Build avatar HTML for a given role
-    function makeAvatarHTML(role) {
-        if (role === 'echo') return ECHO_AVATAR;
-        const initials = applicantName
-            ? applicantName.trim().split(/\s+/).map(n => n[0]).join('').toUpperCase().slice(0, 2)
-            : 'YO';
-        return `<div class="user-chat-avatar">${escapeHtml(initials)}</div>`;
-    }
-
-    function makeSenderLabel(role) {
-        if (role === 'echo') return `<div class="script-sender echo">Echo</div>`;
-        const first = applicantName ? applicantName.split(' ')[0] : 'You';
-        return `<div class="script-sender user">${escapeHtml(first)}</div>`;
-    }
-
     async function appendScriptMessage(text) {
         if (!text.trim()) return;
 
-        // User message — avatar + sender label + prose
+        // Render user message as theatrical script row
+        const speakerLabel = applicantName ? applicantName.split(' ')[0].toUpperCase() : 'YOU';
         const userRow = document.createElement('div');
         userRow.className = 'script-message';
         userRow.innerHTML = `
-            <div class="script-avatar-col">${makeAvatarHTML('user')}</div>
-            <div class="script-body">
-                ${makeSenderLabel('user')}
-                <div class="script-prose">${escapeHtml(text)}</div>
-            </div>
+            <div class="script-speaker user">${escapeHtml(speakerLabel)}</div>
+            <div class="script-prose">${escapeHtml(text)}</div>
         `;
         chatTranscript.appendChild(userRow);
         chatInput.value = '';
         chatInput.style.height = 'auto';
         chatTranscript.scrollTop = chatTranscript.scrollHeight;
 
-        // Echo loading row — avatar + sender + typing indicator
+        // Loading indicator — script row with typing animation
         const loadingRow = document.createElement('div');
         loadingRow.className = 'script-message';
         loadingRow.innerHTML = `
-            <div class="script-avatar-col">${ECHO_AVATAR}</div>
-            <div class="script-body">
-                <div class="script-sender echo">Echo</div>
-                <div class="script-prose"><span class="script-typing">● RESPONDING</span></div>
-            </div>
+            <div class="script-speaker echo">ECHO</div>
+            <div class="script-prose"><span class="script-typing">● RESPONDING</span></div>
         `;
         chatTranscript.appendChild(loadingRow);
         chatTranscript.scrollTop = chatTranscript.scrollHeight;
@@ -275,24 +249,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(payload),
             });
 
-            // Swap loading row for Echo's real response row (built with DOM for proseEl ref)
+            // Swap loading row for Echo's script response row
             chatTranscript.removeChild(loadingRow);
             const echoRow = document.createElement('div');
             echoRow.className = 'script-message';
-            const avatarCol = document.createElement('div');
-            avatarCol.className = 'script-avatar-col';
-            avatarCol.innerHTML = ECHO_AVATAR;
-            const bodyEl = document.createElement('div');
-            bodyEl.className = 'script-body';
-            const senderEl = document.createElement('div');
-            senderEl.className = 'script-sender echo';
-            senderEl.textContent = 'Echo';
+            const echoSpeaker = document.createElement('div');
+            echoSpeaker.className = 'script-speaker echo';
+            echoSpeaker.textContent = 'ECHO';
             const proseEl = document.createElement('div');
             proseEl.className = 'script-prose';
-            bodyEl.appendChild(senderEl);
-            bodyEl.appendChild(proseEl);
-            echoRow.appendChild(avatarCol);
-            echoRow.appendChild(bodyEl);
+            echoRow.appendChild(echoSpeaker);
+            echoRow.appendChild(proseEl);
             chatTranscript.appendChild(echoRow);
 
             // Consume SSE stream token-by-token
@@ -376,11 +343,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const errRow = document.createElement('div');
             errRow.className = 'script-message';
             errRow.innerHTML = `
-                <div class="script-avatar-col">${ECHO_AVATAR}</div>
-                <div class="script-body">
-                    <div class="script-sender echo">Echo</div>
-                    <div class="script-prose" style="color: var(--color-denied);">Connection error. Please try again.</div>
-                </div>
+                <div class="script-speaker echo">ECHO</div>
+                <div class="script-prose" style="color: var(--color-denied);">Connection error. Please try again.</div>
             `;
             chatTranscript.appendChild(errRow);
         } finally {
@@ -397,18 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el('intake-case-id')) el('intake-case-id').innerText = data.case_id || '—';
         if (el('intake-case-status')) el('intake-case-status').innerText = data.status || 'New';
         if (el('intake-target-course')) el('intake-target-course').innerText = data.target_course || '—';
-
-        // Summary — show the area when a real summary arrives
-        const summaryArea = el('intake-summary-area');
-        const summaryText = el('intake-case-summary');
-        if (summaryText && data.summary && data.summary.length > 10) {
-            summaryText.innerText = data.summary;
-            if (summaryArea) summaryArea.style.display = 'block';
-        }
-
-        // Rail header status badge
-        const statusBadge = el('rail-status-badge');
-        if (statusBadge && data.status) statusBadge.innerText = data.status;
+        if (el('intake-case-summary')) el('intake-case-summary').innerText = data.summary || 'Building case from conversation...';
 
         // Update chat header with case title when course is known
         const chatHeaderTitle = document.querySelector('.chat-header h2');
@@ -455,31 +408,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function openInsightRail(competencies, data) {
         const rail = document.getElementById('insight-rail');
         const content = document.getElementById('insight-cards-container');
-        if (!rail || !content) return;
+        if (!rail || !content || !competencies || competencies.length === 0) return;
 
-        // Build competency cards
         const cards = [];
-        if (competencies && competencies.length > 0) {
-            competencies.forEach(c => {
-                cards.push(`<div class="insight-card-v3">
-                    <div class="insight-card-category">Competency <span class="insight-conf-badge">EXTRACTED</span></div>
-                    <div class="insight-card-body">${escapeHtml(c)}</div>
-                </div>`);
-            });
-            content.innerHTML = cards.join('');
-            rail.classList.add('open'); // expand rail width when insights arrive
+        // Course card
+        if (data && data.target_course && data.target_course !== '—') {
+            cards.push(`<div class="insight-card-v3">
+                <div class="insight-card-category">Course<span class="insight-conf-badge">IDENTIFIED</span></div>
+                <div class="insight-card-body">${escapeHtml(data.target_course)}</div>
+            </div>`);
         }
+        // Competency cards
+        competencies.forEach((c, i) => {
+            cards.push(`<div class="insight-card-v3">
+                <div class="insight-card-category">Competency<span class="insight-conf-badge">EXTRACTED</span></div>
+                <div class="insight-card-body">${escapeHtml(c)}</div>
+            </div>`);
+        });
 
-        // Always update the visible case meta section when data is available
-        if (data) {
-            const el = id => document.getElementById(id);
-            if (data.target_course && data.target_course !== '—') {
-                if (el('intake-target-course')) el('intake-target-course').innerText = data.target_course;
-            }
-            if (data.case_id) {
-                if (el('intake-case-id')) el('intake-case-id').innerText = data.case_id;
-            }
-        }
+        content.innerHTML = cards.join('');
+        rail.classList.add('open');
     }
 
     if (chatSendBtn && chatInput) {
@@ -696,10 +644,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 div.className = 'docket-card-v3';
                 div.innerHTML = `
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
-                        <span class="docket-card-id">${escapeHtml(c.case_id)}</span>
+                        <span class="docket-id">${escapeHtml(c.case_id)}</span>
                         <span class="badge ${getBadgeClass(c.status)}" style="font-size:10px;">${escapeHtml(c.status)}</span>
                     </div>
-                    <div class="docket-card-name">${escapeHtml(courseName)}</div>
+                    <div class="docket-name">${escapeHtml(courseName)}</div>
                     <div style="font-family:var(--font-mono);font-size:10px;color:var(--color-muted);margin-bottom:0.75rem;">${c.created_at ? formatTimestamp(c.created_at) : ''}</div>
                     <div class="progress-bar-track" style="height:3px;">
                         <div class="progress-bar-fill" style="width:${pct}%;height:3px;"></div>
@@ -721,98 +669,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Failed to fetch cases', e);
             showToast('Failed to load cases.', 'error');
         }
-    }
-
-    async function loadEvidenceVault() {
-        const claimsList = document.getElementById('vault-claims-list');
-        const claimsCount = document.getElementById('vault-claims-count');
-        const evidenceGrid = document.getElementById('vault-evidence-grid');
-
-        if (!currentCaseId) {
-            if (claimsList) claimsList.innerHTML = '<p class="text-muted" style="font-style:italic;font-size:var(--text-sm);padding:var(--space-4) 0;">No active case. Start a Studio session first.</p>';
-            if (evidenceGrid) evidenceGrid.innerHTML = '<p class="text-muted" style="font-style:italic;font-size:var(--text-sm);grid-column:1/-1;">No active case.</p>';
-            return;
-        }
-
-        try {
-            const resp = await fetch(`/api/case/${currentCaseId}`, { headers: getRequestHeaders() });
-            if (!resp.ok) return;
-            const data = await resp.json();
-
-            // Populate claims from claimed_competencies
-            if (claimsList) {
-                const comps = data.claimed_competencies
-                    ? (typeof data.claimed_competencies === 'string' ? JSON.parse(data.claimed_competencies) : data.claimed_competencies)
-                    : [];
-                if (comps && comps.length > 0) {
-                    if (claimsCount) claimsCount.textContent = `${comps.length} EXTRACTED`;
-                    claimsList.innerHTML = comps.map(c => `
-                        <div class="claim-card">
-                            <div class="claim-competency">${escapeHtml(c)}</div>
-                            <div class="claim-link-status">Extracted from conversation</div>
-                        </div>`).join('');
-                } else {
-                    if (claimsCount) claimsCount.textContent = '0 EXTRACTED';
-                    claimsList.innerHTML = '<p class="text-muted" style="font-style:italic;font-size:var(--text-sm);padding:var(--space-4) 0;">No competencies identified yet. Continue your Studio session.</p>';
-                }
-            }
-
-            // Populate evidence grid
-            if (evidenceGrid) {
-                const evidence = data.evidence || [];
-                if (evidence.length === 0) {
-                    evidenceGrid.innerHTML = '<p class="text-muted" style="font-style:italic;font-size:var(--text-sm);grid-column:1/-1;">No evidence files yet.</p>';
-                } else {
-                    evidenceGrid.innerHTML = evidence.map(ev => {
-                        const ext = ev.file_name.split('.').pop().toLowerCase();
-                        const isLinked = ev.status === 'Uploaded';
-                        const downloadUrl = `/api/evidence/download/${currentCaseId}/${encodeURIComponent(ev.file_name)}`;
-                        const iconClass = ext === 'pdf' ? 'ph-fill ph-file-pdf' : ext === 'png' || ext === 'jpg' || ext === 'jpeg' ? 'ph-fill ph-image' : 'ph-fill ph-file-text';
-                        return `
-                            <div class="evidence-file-card">
-                                <div class="evidence-thumb">
-                                    <i class="${iconClass}" style="font-size:2rem;color:var(--color-muted);"></i>
-                                </div>
-                                <div class="evidence-file-meta">
-                                    <div class="evidence-file-name" title="${escapeHtml(ev.file_name)}">${escapeHtml(ev.file_name.length > 22 ? ev.file_name.substring(0,20)+'…' : ev.file_name)}</div>
-                                    <a href="${downloadUrl}" target="_blank" rel="noopener" style="display:block;margin-top:2px;">
-                                        <span class="evidence-link-badge ${isLinked ? 'linked' : 'unlinked'}">${isLinked ? 'Uploaded' : 'Pending'}</span>
-                                    </a>
-                                </div>
-                            </div>`;
-                    }).join('');
-                }
-            }
-        } catch (e) {
-            console.warn('loadEvidenceVault error:', e);
-        }
-    }
-
-    // Wire vault upload button
-    document.addEventListener('click', (e) => {
-        if (e.target.closest('#vault-upload-btn')) {
-            document.getElementById('vault-file-input')?.click();
-        }
-    });
-    const vaultFileInput = document.getElementById('vault-file-input');
-    if (vaultFileInput) {
-        vaultFileInput.addEventListener('change', async (e) => {
-            const files = e.target.files;
-            if (!files || !files.length || !currentCaseId) return;
-            for (const file of files) {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('case_id', currentCaseId);
-                try {
-                    const resp = await fetch('/api/evidence/upload', { method: 'POST', body: formData });
-                    const result = await resp.json();
-                    if (result.error) { showToast(`Upload failed: ${result.error}`, 'error'); }
-                    else { showToast(`Uploaded: ${file.name}`, 'success'); }
-                } catch(err) { showToast('Upload failed', 'error'); }
-            }
-            vaultFileInput.value = '';
-            loadEvidenceVault();
-        });
     }
 
     async function loadCaseDetail(caseId, caseIndex) {
@@ -935,23 +791,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         const isAI = msg.role === 'assistant';
                         const row = document.createElement('div');
                         row.className = 'script-message';
-                        if (isAI) {
-                            const avatarCol = document.createElement('div');
-                            avatarCol.className = 'script-avatar-col';
-                            avatarCol.innerHTML = ECHO_AVATAR;
-                            const body = document.createElement('div');
-                            body.className = 'script-body';
-                            body.innerHTML = `<div class="script-sender echo">Echo</div><div class="script-prose">${formatMarkdown(msg.content)}</div>`;
-                            row.appendChild(avatarCol);
-                            row.appendChild(body);
-                        } else {
-                            row.innerHTML = `
-                                <div class="script-avatar-col">${makeAvatarHTML('user')}</div>
-                                <div class="script-body">
-                                    ${makeSenderLabel('user')}
-                                    <div class="script-prose">${escapeHtml(msg.content)}</div>
-                                </div>`;
-                        }
+                        const speaker = isAI ? 'ECHO' : (applicantName ? applicantName.split(' ')[0].toUpperCase() : 'YOU');
+                        const speakerClass = isAI ? 'echo' : 'user';
+                        row.innerHTML = `
+                            <div class="script-speaker ${speakerClass}">${escapeHtml(speaker)}</div>
+                            <div class="script-prose">${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div>
+                        `;
                         chatTranscript.appendChild(row);
                     });
                     chatTranscript.scrollTop = chatTranscript.scrollHeight;
@@ -1005,31 +850,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i class="ph ph-x"></i>
                 </button>
             </div>
-            <div class="drawer-body script-transcript" style="padding: var(--space-4);">`;
+            <div class="drawer-body">`;
 
         if (caseData.messages && caseData.messages.length > 0) {
-            const drawerName = caseData.applicant_name || applicantName || 'Student';
-            const drawerInitials = drawerName.trim().split(/\s+/).map(n => n[0]).join('').toUpperCase().slice(0, 2);
-            const drawerFirst = drawerName.split(' ')[0];
             caseData.messages.forEach(msg => {
                 const isAI = msg.role === 'assistant';
-                if (isAI) {
-                    html += `<div class="script-message">
-                        <div class="script-avatar-col">${ECHO_AVATAR}</div>
-                        <div class="script-body">
-                            <div class="script-sender echo">Echo</div>
-                            <div class="script-prose">${formatMarkdown(msg.content)}</div>
-                        </div>
-                    </div>`;
-                } else {
-                    html += `<div class="script-message">
-                        <div class="script-avatar-col"><div class="user-chat-avatar">${escapeHtml(drawerInitials)}</div></div>
-                        <div class="script-body">
-                            <div class="script-sender user">${escapeHtml(drawerFirst)}</div>
-                            <div class="script-prose">${escapeHtml(msg.content)}</div>
-                        </div>
-                    </div>`;
-                }
+                html += `<div class="message ${msg.role}">
+                    <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg>' : 'ST'}</div>
+                    <div class="message-content"><div>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div></div>
+                </div>`;
             });
         } else {
             html += '<p class="text-muted p-4">No conversation transcript available.</p>';
@@ -1507,30 +1336,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     transcriptBody.className = 'script-transcript';
                     transcriptBody.innerHTML = '';
-                    const studentName = data.applicant_name || 'Student';
-                    const studentInitials = studentName.trim().split(/\s+/).map(n => n[0]).join('').toUpperCase().slice(0, 2);
-                    const studentFirst = studentName.split(' ')[0];
                     data.messages.forEach(msg => {
                         const isAI = msg.role === 'assistant';
                         const row = document.createElement('div');
                         row.className = 'script-message';
-                        if (isAI) {
-                            const avatarCol = document.createElement('div');
-                            avatarCol.className = 'script-avatar-col';
-                            avatarCol.innerHTML = ECHO_AVATAR;
-                            const body = document.createElement('div');
-                            body.className = 'script-body';
-                            body.innerHTML = `<div class="script-sender echo">Echo</div><div class="script-prose">${formatMarkdown(msg.content)}</div>`;
-                            row.appendChild(avatarCol);
-                            row.appendChild(body);
-                        } else {
-                            row.innerHTML = `
-                                <div class="script-avatar-col"><div class="user-chat-avatar">${escapeHtml(studentInitials)}</div></div>
-                                <div class="script-body">
-                                    <div class="script-sender user">${escapeHtml(studentFirst)}</div>
-                                    <div class="script-prose">${escapeHtml(msg.content)}</div>
-                                </div>`;
-                        }
+                        const studentLabel = (data.applicant_name || 'Student').split(' ')[0].toUpperCase();
+                        row.innerHTML = `
+                            <div class="script-speaker ${isAI ? 'echo' : 'user'}">${isAI ? 'ECHO' : escapeHtml(studentLabel)}</div>
+                            <div class="script-prose">${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div>
+                        `;
                         transcriptBody.appendChild(row);
                     });
                 }
@@ -1553,25 +1367,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         <a href="${downloadUrl}" download="${escapeHtml(ev.file_name)}" title="Download" style="color:var(--text-muted);flex-shrink:0;"><i class="ph ph-download-simple"></i></a>
                     </div>`;
                 });
-            }
-
-            // Competency Assessment (right pane top section)
-            const compSection = document.getElementById('review-competency-section');
-            const compList = document.getElementById('review-competency-list');
-            if (compSection && compList && data.claimed_competencies) {
-                try {
-                    const comps = typeof data.claimed_competencies === 'string'
-                        ? JSON.parse(data.claimed_competencies)
-                        : data.claimed_competencies;
-                    if (comps && comps.length > 0) {
-                        compSection.style.display = 'block';
-                        compList.innerHTML = comps.map(c => `
-                            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:var(--color-vellum);border-radius:var(--radius-sm);border-left:2px solid var(--color-primary);">
-                                <span style="font-family:var(--font-sans);font-size:var(--text-sm);color:var(--color-ink);">${escapeHtml(c)}</span>
-                                <span style="font-family:var(--font-mono);font-size:10px;background:var(--color-approved-bg);color:var(--color-approved);border-radius:var(--radius-xs);padding:1px 6px;">CLAIMED</span>
-                            </div>`).join('');
-                    }
-                } catch(e) { /* non-fatal */ }
             }
 
             // Load per-case reviewer checks (W3)
@@ -1816,10 +1611,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 { href: '/admin/settings', label: 'Settings'   }
               ]
             : [
-                { href: '/',         label: 'Home'      },
-                { href: '/chat',     label: 'Studio'    },
-                { href: '/cases',    label: 'Dossiers'  },
-                { href: '/evidence', label: 'Evidence'  }
+                { href: '/',      label: 'Home'     },
+                { href: '/chat',  label: 'Studio'   },
+                { href: '/cases', label: 'Dossiers' }
               ];
         nav.innerHTML = links.map(l =>
             `<a href="${l.href}" class="topbar-link${currentPath === l.href ? ' active' : ''}"
@@ -1846,7 +1640,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (profileName) profileName.innerText = 'Admin Reviewer';
         if (profileRole) profileRole.innerText = 'Reviewer';
         const switchLabel = document.getElementById('role-switch-label');
-        if (switchLabel) switchLabel.innerText = 'Applicant';
+        if (switchLabel) switchLabel.innerText = 'Switch to Applicant';
         // Hide sidebar on admin routes — nav lives in topbar
         appContainer.classList.add('admin-mode');
         appContainer.classList.remove('applicant-mode');
@@ -1859,7 +1653,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (applicantNavWrapper) applicantNavWrapper.style.display = 'block';
         updateProfileDisplay();
         const switchLabel = document.getElementById('role-switch-label');
-        if (switchLabel) switchLabel.innerText = 'Reviewer';
+        if (switchLabel) switchLabel.innerText = 'Switch to Reviewer';
         // Hide sidebar on applicant routes — nav lives in topbar
         appContainer.classList.add('applicant-mode');
         appContainer.classList.remove('admin-mode');
@@ -2177,16 +1971,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>`;
                     }
 
-                    // Show attachment row in chat transcript
+                    // Show attachment bubble in chat
                     if (chatTranscript) {
                         const attachDiv = document.createElement('div');
-                        attachDiv.className = 'script-message';
-                        attachDiv.innerHTML = `
-                            <div class="script-avatar-col">${makeAvatarHTML('user')}</div>
-                            <div class="script-body">
-                                ${makeSenderLabel('user')}
-                                <div class="script-prose">📎 <em>${escapeHtml(data.filename)}</em> uploaded as evidence.</div>
-                            </div>`;
+                        attachDiv.className = 'message user';
+                        attachDiv.innerHTML = `<div class="avatar-small img">ME</div><div class="message-content"><p>📎 <em>${escapeHtml(data.filename)}</em> uploaded</p></div>`;
                         chatTranscript.appendChild(attachDiv);
                         chatTranscript.scrollTop = chatTranscript.scrollHeight;
                     }
@@ -2285,7 +2074,44 @@ document.addEventListener('DOMContentLoaded', () => {
         return icons[ext] || 'ph-fill ph-file';
     }
 
-    // Global search bar removed from topbar (element no longer in DOM)
+    // ═══════════════════════════════════════════════════
+    // 11. Global Search Bar (Fix 9)
+    // ═══════════════════════════════════════════════════
+    const globalSearchInput = document.getElementById('global-search-input');
+    if (globalSearchInput) {
+        globalSearchInput.addEventListener('keypress', async (e) => {
+            if (e.key !== 'Enter') return;
+            const query = globalSearchInput.value.trim();
+            if (!query) return;
+
+            // Only search if user has admin token
+            const adminToken = sessionStorage.getItem('cpl_admin_token');
+            if (!adminToken) {
+                showToast('Please sign in as reviewer to search cases.', 'warning');
+                return;
+            }
+
+            try {
+                const resp = await fetch('/api/admin/cases', { headers: getAdminHeaders() });
+                const data = await resp.json();
+                const match = (data.cases || []).find(c =>
+                    c.case_id === query ||
+                    (c.student_id || '').toLowerCase() === query.toLowerCase() ||
+                    (c.applicant || '').toLowerCase().includes(query.toLowerCase())
+                );
+                if (match) {
+                    openAdminReview(match.case_id);
+                    globalSearchInput.value = '';
+                    showToast(`Found case ${match.case_id}`, 'info');
+                } else {
+                    showToast('No matching case found.', 'warning');
+                }
+            } catch (err) {
+                console.error('Global search failed', err);
+                showToast('Search failed.', 'error');
+            }
+        });
+    }
 
     // ═══════════════════════════════════════════════════
     // 12. Session Recovery on Refresh (Fix 10)
@@ -2310,14 +2136,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         chatTranscript.innerHTML = '';
                         data.messages.forEach(msg => {
                             const div = document.createElement('div');
-                            div.className = 'script-message';
+                            div.className = `message ${msg.role}`;
                             const isAI = msg.role === 'assistant';
                             div.innerHTML = `
-                                <div class="script-avatar-col">${isAI ? ECHO_AVATAR : makeAvatarHTML('user')}</div>
-                                <div class="script-body">
-                                    ${isAI ? '<div class="script-sender echo">Echo</div>' : makeSenderLabel('user')}
-                                    <div class="script-prose">${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div>
-                                </div>
+                                <div class="avatar-small ${isAI ? 'bg-ai' : 'img'}">${isAI ? '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1 L7.7 5.3 L12 7 L7.7 8.7 L7 13 L6.3 8.7 L2 7 L6.3 5.3 Z" fill="white" opacity="0.95"/></svg>' : (applicantName || 'ME').substring(0, 2).toUpperCase()}</div>
+                                <div class="message-content"><div>${isAI ? formatMarkdown(msg.content) : escapeHtml(msg.content)}</div></div>
                             `;
                             chatTranscript.appendChild(div);
                         });
